@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   Truck, Users, Wrench, Package, DollarSign, LayoutDashboard, Plus, Trash2, X,
-  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2,
+  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------
@@ -923,8 +923,39 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
 
   const sucursalDelVehiculo = (placa) => veiculos.find((x) => x.placa === placa)?.sucursal || "";
 
+  const emptyViagemRow = () => ({ placa: "", motorista: "", data: "", dataChegada: "", estado: "En curso", sucursal: "", kmInicial: "", kmFinal: "" });
+
   const openNew = () => setForm({ id: null, placa: "", motorista: "", data: "", dataChegada: "", mes: "", estado: "En curso", sucursal: "", kmInicial: "", kmFinal: "" });
+  const openNewMultiple = () => setForm({ bulk: true, rows: [emptyViagemRow(), emptyViagemRow(), emptyViagemRow(), emptyViagemRow(), emptyViagemRow()] });
   const openEdit = (v) => setForm({ ...v });
+
+  const updateBulkRow = (idx, field, value) => {
+    setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [field]: value, sucursal: field === "placa" ? (r.sucursal || sucursalDelVehiculo(value)) : r.sucursal } : r)) });
+  };
+  const addBulkRow = () => setForm({ ...form, rows: [...form.rows, emptyViagemRow()] });
+  const removeBulkRow = (idx) => setForm({ ...form, rows: form.rows.length > 1 ? form.rows.filter((_, i) => i !== idx) : form.rows });
+
+  const saveBulk = (e) => {
+    e.preventDefault();
+    const validas = form.rows.filter((r) => r.placa && r.data);
+    if (validas.length === 0) return;
+    let numero = Math.max(0, ...viagens.map((v) => v.numero || 0));
+    const nuevos = validas.map((r) => {
+      numero += 1;
+      const mes = MESES[new Date(r.data + "T00:00:00").getMonth()];
+      return { ...r, id: uid(), numero, mes, estado: r.estado || "En curso" };
+    });
+    setViagens([...viagens, ...nuevos]);
+    // Actualiza el KM actual del vehículo si corresponde
+    let veiculosAtualizados = veiculos;
+    nuevos.forEach((r) => {
+      if (r.kmFinal && r.placa) {
+        veiculosAtualizados = veiculosAtualizados.map((x) => (x.placa === r.placa && Number(r.kmFinal) > Number(x.kmAtual || 0) ? { ...x, kmAtual: r.kmFinal } : x));
+      }
+    });
+    if (veiculosAtualizados !== veiculos) setVeiculos(veiculosAtualizados);
+    setForm(null);
+  };
 
   const onPlacaChange = (placa) => {
     const v = veiculos.find((x) => x.placa === placa);
@@ -1000,6 +1031,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
             <Button variant="ghost" onClick={() => { setMostrarReporte(!mostrarReporte); setNumeroGenerado(null); setNumeroBusca(""); }}>
               <FileText size={15} /> {mostrarReporte ? "Ocultar reporte" : "Generar reporte"}
             </Button>
+            <Button variant="ghost" onClick={openNewMultiple}><LayoutGrid size={15} /> Varios Viajes</Button>
             <Button onClick={openNew}><Plus size={15} /> Nuevo viaje</Button>
           </div>
         } />
@@ -1202,7 +1234,71 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
         </div>
       </Card>
 
-      {form && (
+      {form && form.bulk && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={saveBulk}>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+              Completá varios viajes de una sola vez. Las filas vacías se ignoran al guardar.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {form.rows.map((row, idx) => (
+                <div key={idx} style={{
+                  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10,
+                  padding: 10, border: `1px solid ${C.border}`, borderRadius: 8, alignItems: "flex-end",
+                }}>
+                  <Field label="Vehículo">
+                    <select style={inputStyle} value={row.placa} onChange={(e) => updateBulkRow(idx, "placa", e.target.value)}>
+                      <option value="">Seleccione</option>
+                      {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Sucursal">
+                    <select style={inputStyle} value={row.sucursal || ""} onChange={(e) => setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, sucursal: e.target.value } : r)) })}>
+                      <option value="">Seleccione</option>
+                      {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Chofer">
+                    <select style={inputStyle} value={row.motorista} onChange={(e) => updateBulkRow(idx, "motorista", e.target.value)}>
+                      <option value="">Seleccione</option>
+                      {motoristas.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Fecha salida">
+                    <input type="date" style={inputStyle} value={row.data} onChange={(e) => updateBulkRow(idx, "data", e.target.value)} />
+                  </Field>
+                  <Field label="Fecha llegada">
+                    <input type="date" style={inputStyle} value={row.dataChegada || ""} onChange={(e) => updateBulkRow(idx, "dataChegada", e.target.value)} />
+                  </Field>
+                  <Field label="Estado">
+                    <select style={inputStyle} value={row.estado || "En curso"} onChange={(e) => updateBulkRow(idx, "estado", e.target.value)}>
+                      {ESTADOS_VIAGEM.map((e) => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="KM inicial">
+                    <input type="number" style={inputStyle} value={row.kmInicial ?? ""} onChange={(e) => updateBulkRow(idx, "kmInicial", e.target.value)} />
+                  </Field>
+                  <Field label="KM final">
+                    <input type="number" style={inputStyle} value={row.kmFinal ?? ""} onChange={(e) => updateBulkRow(idx, "kmFinal", e.target.value)} />
+                  </Field>
+                  {form.rows.length > 1 && (
+                    <button type="button" onClick={() => removeBulkRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start" }}>
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <Button variant="ghost" type="button" onClick={addBulkRow}><Plus size={14} /> Agregar otra fila</Button>
+              <Button type="submit"><Check size={14} /> Guardar viajes</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {form && !form.bulk && (
         <Card style={{ marginBottom: 18 }}>
           <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
             <Field label="Vehículo">
@@ -1510,6 +1606,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
   const viagemById = (id) => viagens.find((v) => v.id === id);
 
   const openNew = () => setForm({ viagemId: "", rows: [emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()], editId: null });
+  const openNewUnico = () => setForm({ viagemId: "", rows: [emptyPedidoRow()], editId: null });
   const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete }], editId: p.id });
 
   const updateRow = (idx, field, value) => {
@@ -1543,7 +1640,12 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
   return (
     <div>
       <SectionHeader title="Pedidos" subtitle={`${pedidos.length} registrados`}
-        action={<Button onClick={openNew}><Plus size={15} /> Nuevo pedido</Button>} />
+        action={
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button variant="ghost" onClick={openNew}><LayoutGrid size={15} /> Varios Pedidos</Button>
+            <Button onClick={openNewUnico}><Plus size={15} /> Nuevo Pedido</Button>
+          </div>
+        } />
 
       {setTarifas && (
         <Card style={{ marginBottom: 18 }}>
