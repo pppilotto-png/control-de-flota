@@ -401,7 +401,8 @@ export default function App() {
         {tab === "viagens" && (
           <ViagensPage
             viagens={viagens} setViagens={(d) => persist("viagens", setViagens, d)}
-            veiculos={veiculos} motoristas={motoristas} sucursales={sucursales}
+            veiculos={veiculos} setVeiculos={(d) => persist("veiculos", setVeiculos, d)}
+            motoristas={motoristas} sucursales={sucursales}
             pedidos={pedidos} setPedidos={(d) => persist("pedidos", setPedidos, d)}
             custos={custos} setCustos={(d) => persist("custos", setCustos, d)}
             tarifas={tarifas}
@@ -907,14 +908,27 @@ function MotoristasPage({ motoristas, setMotoristas }) {
 /* ---------------------------------------------------------------
    VIAJES
 --------------------------------------------------------------- */
-function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pedidos, setPedidos, custos, setCustos, tarifas }) {
+function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, sucursales, pedidos, setPedidos, custos, setCustos, tarifas }) {
   const [form, setForm] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [filtroSucursal, setFiltroSucursal] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [filtroAno, setFiltroAno] = useState("");
+  const [filtroMes, setFiltroMes] = useState("");
+  const [busca, setBusca] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const PAGE_SIZE = 25;
 
-  const openNew = () => setForm({ id: null, placa: "", motorista: "", data: "", mes: "", estado: "En curso" });
+  const sucursalDelVehiculo = (placa) => veiculos.find((x) => x.placa === placa)?.sucursal || "";
+
+  const openNew = () => setForm({ id: null, placa: "", motorista: "", data: "", mes: "", estado: "En curso", sucursal: "", kmInicial: "", kmFinal: "" });
+  const openEdit = (v) => setForm({ ...v });
+
+  const onPlacaChange = (placa) => {
+    const v = veiculos.find((x) => x.placa === placa);
+    setForm({ ...form, placa, sucursal: form.sucursal || v?.sucursal || "", kmInicial: form.kmInicial || v?.kmAtual || "" });
+  };
 
   const save = (e) => {
     e.preventDefault();
@@ -926,6 +940,13 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
     } else {
       const numero = Math.max(0, ...viagens.map((v) => v.numero || 0)) + 1;
       setViagens([...viagens, { ...record, id: uid(), numero, estado: record.estado || "En curso" }]);
+    }
+    // Si cargaste el KM final, actualiza el KM actual del vehículo (solo si es mayor al que ya tenía)
+    if (record.kmFinal && record.placa) {
+      const vehiculo = veiculos.find((x) => x.placa === record.placa);
+      if (vehiculo && Number(record.kmFinal) > Number(vehiculo.kmAtual || 0)) {
+        setVeiculos(veiculos.map((x) => (x.placa === record.placa ? { ...x, kmAtual: record.kmFinal } : x)));
+      }
     }
     setForm(null);
   };
@@ -939,13 +960,25 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
     return { cantidad: seus.length, valorFacturas, ingreso };
   };
 
-  const cols = ["N°", "Fecha", "Vehículo", "Sucursal", "Chofer", "Estado", "Pedidos", "Valor facturas", "Ingreso flete", ""];
-  const sucursalDelVehiculo = (placa) => veiculos.find((x) => x.placa === placa)?.sucursal || "—";
+  const cols = ["N°", "Fecha", "Vehículo", "Sucursal", "Chofer", "Estado", "Km recorridos", "Pedidos", "Valor facturas", "Ingreso flete", ""];
 
-  const sorted = [...viagens]
-    .filter((v) => !filtroSucursal || sucursalDelVehiculo(v.placa) === filtroSucursal)
+  const anosDisponibles = Array.from(new Set(viagens.filter((v) => v.data).map((v) => v.data.slice(0, 4)))).sort((a, b) => b.localeCompare(a));
+
+  const filtrados = [...viagens]
+    .filter((v) => !filtroSucursal || (v.sucursal || sucursalDelVehiculo(v.placa)) === filtroSucursal)
     .filter((v) => !filtroEstado || (v.estado || "En curso") === filtroEstado)
+    .filter((v) => !filtroAno || (v.data || "").slice(0, 4) === filtroAno)
+    .filter((v) => !filtroMes || v.mes === filtroMes)
+    .filter((v) => {
+      if (!busca.trim()) return true;
+      const q = busca.trim().toLowerCase();
+      return (v.placa || "").toLowerCase().includes(q) || (v.motorista || "").toLowerCase().includes(q);
+    })
     .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / PAGE_SIZE));
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const sorted = filtrados.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
 
   return (
     <div>
@@ -955,6 +988,7 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
       <Card style={{ marginBottom: 18, background: "rgba(47,107,47,0.06)", borderColor: C.yellow }}>
         <div style={{ fontSize: 12.5, color: C.muted }}>
           Hacé clic en un viaje para cargar sus pedidos y costos ahí mismo, sin cambiar de pantalla.
+          Al cargar el KM final, el KM actual del vehículo se actualiza solo.
         </div>
       </Card>
 
@@ -962,9 +996,15 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
         <Card style={{ marginBottom: 18 }}>
           <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
             <Field label="Vehículo">
-              <select style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value })} required>
+              <select style={inputStyle} value={form.placa} onChange={(e) => onPlacaChange(e.target.value)} required>
                 <option value="">Seleccione</option>
                 {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+              </select>
+            </Field>
+            <Field label="Sucursal">
+              <select style={inputStyle} value={form.sucursal || ""} onChange={(e) => setForm({ ...form, sucursal: e.target.value })}>
+                <option value="">Seleccione</option>
+                {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
             <Field label="Chofer">
@@ -981,6 +1021,12 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
                 {ESTADOS_VIAGEM.map((e) => <option key={e} value={e}>{e}</option>)}
               </select>
             </Field>
+            <Field label="KM inicial">
+              <input type="number" style={inputStyle} value={form.kmInicial ?? ""} onChange={(e) => setForm({ ...form, kmInicial: e.target.value })} />
+            </Field>
+            <Field label="KM final">
+              <input type="number" style={inputStyle} value={form.kmFinal ?? ""} onChange={(e) => setForm({ ...form, kmFinal: e.target.value })} />
+            </Field>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
               <Button type="submit"><Check size={14} /> Guardar</Button>
               <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
@@ -990,15 +1036,30 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
       )}
 
       {viagens.length > 0 && (
-        <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,220px))", gap: 12 }}>
-          <Field label="Filtrar por sucursal">
-            <select style={inputStyle} value={filtroSucursal} onChange={(e) => setFiltroSucursal(e.target.value)}>
+        <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,200px))", gap: 12 }}>
+          <Field label="Buscar (chapa o chofer)">
+            <input style={inputStyle} placeholder="Ej: AAOP217, Carlos..." value={busca} onChange={(e) => { setBusca(e.target.value); setPagina(1); }} />
+          </Field>
+          <Field label="Año">
+            <select style={inputStyle} value={filtroAno} onChange={(e) => { setFiltroAno(e.target.value); setPagina(1); }}>
+              <option value="">Todos</option>
+              {anosDisponibles.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </Field>
+          <Field label="Mes">
+            <select style={inputStyle} value={filtroMes} onChange={(e) => { setFiltroMes(e.target.value); setPagina(1); }}>
+              <option value="">Todos</option>
+              {MESES.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </Field>
+          <Field label="Sucursal">
+            <select style={inputStyle} value={filtroSucursal} onChange={(e) => { setFiltroSucursal(e.target.value); setPagina(1); }}>
               <option value="">Todas</option>
               {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
-          <Field label="Filtrar por estado">
-            <select style={inputStyle} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+          <Field label="Estado">
+            <select style={inputStyle} value={filtroEstado} onChange={(e) => { setFiltroEstado(e.target.value); setPagina(1); }}>
               <option value="">Todos</option>
               {ESTADOS_VIAGEM.map((e) => <option key={e} value={e}>{e}</option>)}
             </select>
@@ -1006,7 +1067,7 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
         </div>
       )}
 
-      {sorted.length === 0 ? <EmptyState icon={Package} text="No hay viajes registrados." /> : (
+      {filtrados.length === 0 ? <EmptyState icon={Package} text={viagens.length === 0 ? "No hay viajes registrados." : "Ningún viaje coincide con los filtros."} /> : (
         <Card style={{ padding: 0 }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
@@ -1034,13 +1095,16 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
                         <td style={{ padding: "10px 14px" }}>{v.data ? v.data.split("-").reverse().join("/") : "—"}</td>
                         <td style={{ padding: "10px 14px" }}><PlateChip placa={v.placa} /></td>
                         <td style={{ padding: "10px 14px", color: C.muted, fontSize: 12.5 }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Building2 size={13} /> {sucursalDelVehiculo(v.placa)}</span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Building2 size={13} /> {v.sucursal || sucursalDelVehiculo(v.placa) || "—"}</span>
                         </td>
                         <td style={{ padding: "10px 14px" }}>{v.motorista || "—"}</td>
                         <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
                           <span style={{ cursor: "pointer" }} onClick={() => toggleEstado(v)} title="Clic para cambiar el estado">
                             <EstadoBadge estado={v.estado || "En curso"} />
                           </span>
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>
+                          {v.kmInicial && v.kmFinal ? `${fmtNum(Number(v.kmFinal) - Number(v.kmInicial))} km` : "—"}
                         </td>
                         <td style={{ padding: "10px 14px" }}>{s.cantidad}</td>
                         <td style={{ padding: "10px 14px" }}>{fmtMoney(s.valorFacturas)}</td>
@@ -1054,7 +1118,7 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
                           <td colSpan={cols.length} style={{ padding: 0, borderBottom: `1px solid ${C.border}` }}>
                             <ViagemDetalle
                               viagem={v}
-                              sucursal={sucursalDelVehiculo(v.placa)}
+                              sucursal={v.sucursal || sucursalDelVehiculo(v.placa)}
                               pedidos={pedidos} setPedidos={setPedidos}
                               custos={custos} setCustos={setCustos}
                               tarifas={tarifas}
@@ -1069,6 +1133,18 @@ function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pe
               </tbody>
             </table>
           </div>
+          {totalPaginas > 1 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 12, color: C.muted }}>
+                Mostrando {(paginaActual - 1) * PAGE_SIZE + 1}–{Math.min(paginaActual * PAGE_SIZE, filtrados.length)} de {filtrados.length}
+              </span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Button variant="ghost" onClick={() => setPagina(Math.max(1, paginaActual - 1))} style={paginaActual === 1 ? { opacity: 0.4, pointerEvents: "none" } : {}}>Anterior</Button>
+                <span style={{ fontSize: 12.5, color: C.muted }}>Página {paginaActual} de {totalPaginas}</span>
+                <Button variant="ghost" onClick={() => setPagina(Math.min(totalPaginas, paginaActual + 1))} style={paginaActual === totalPaginas ? { opacity: 0.4, pointerEvents: "none" } : {}}>Siguiente</Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
     </div>
@@ -1596,6 +1672,7 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
   const [dataFim, setDataFim] = useState("");
   const [placaFiltro, setPlacaFiltro] = useState("");
   const [sucursalFiltro, setSucursalFiltro] = useState("");
+  const [viagemFiltro, setViagemFiltro] = useState("");
 
   const inRange = (data) => {
     if (!data) return true;
@@ -1640,6 +1717,15 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
     ? `${dataInicio ? dataInicio.split("-").reverse().join("/") : "inicio"} hasta ${dataFim ? dataFim.split("-").reverse().join("/") : "hoy"}`
     : "Todo el período";
 
+  const viagemSeleccionada = viagemFiltro ? viagens.find((v) => v.id === viagemFiltro) : null;
+  const pedidosDelViaje = viagemFiltro ? pedidos.filter((p) => p.viagemId === viagemFiltro) : [];
+  const custosDelViaje = viagemFiltro ? custos.filter((c) => c.viagemId === viagemFiltro) : [];
+  const ingresoDelViaje = pedidosDelViaje.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
+  const facturasDelViaje = pedidosDelViaje.reduce((s, p) => s + Number(p.valorFatura || 0), 0);
+  const costosDelViaje = custosDelViaje.reduce((s, c) => s + Number(c.valor || 0), 0);
+  const resultadoDelViaje = ingresoDelViaje - costosDelViaje;
+  const viagensOrdenadasParaFiltro = [...viagensF].sort((a, b) => (b.numero || 0) - (a.numero || 0));
+
   return (
     <div>
       <SectionHeader title="Reportes" subtitle="Filtre por período y vehículo, y después genere el reporte en PDF"
@@ -1665,9 +1751,70 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
               {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
+          <Field label="Detalle de un viaje específico">
+            <select style={inputStyle} value={viagemFiltro} onChange={(e) => setViagemFiltro(e.target.value)}>
+              <option value="">Ninguno (ver totales generales)</option>
+              {viagensOrdenadasParaFiltro.map((v) => (
+                <option key={v.id} value={v.id}>
+                  N° {v.numero} · {v.data ? v.data.split("-").reverse().join("/") : "—"} · {v.placa}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
       </Card>
 
+      {viagemSeleccionada && (
+        <div id="report-print-area">
+        <Card style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 18, textTransform: "uppercase" }}>
+              Detalle del viaje N° {viagemSeleccionada.numero}
+            </div>
+          </div>
+          <div style={{ fontSize: 13, color: C.muted, marginBottom: 16 }}>
+            <PlateChip placa={viagemSeleccionada.placa} /> · {viagemSeleccionada.data ? viagemSeleccionada.data.split("-").reverse().join("/") : "—"}
+            {viagemSeleccionada.motorista ? ` · ${viagemSeleccionada.motorista}` : ""}
+            {" · "}<EstadoBadge estado={viagemSeleccionada.estado || "En curso"} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 18 }}>
+            <KPI icon={Receipt} label="Pedidos" value={pedidosDelViaje.length} />
+            <KPI icon={DollarSign} label="Valor facturas" value={fmtMoney(facturasDelViaje)} />
+            <KPI icon={Receipt} label="Ingreso flete" value={fmtMoney(ingresoDelViaje)} />
+            <KPI icon={DollarSign} label="Costos del viaje" value={fmtMoney(costosDelViaje)} />
+            <KPI icon={resultadoDelViaje >= 0 ? TrendingUp : TrendingDown} label="Resultado neto" value={fmtMoney(resultadoDelViaje)} highlight={resultadoDelViaje >= 0 ? "green" : "red"} />
+          </div>
+
+          <ChartTitle>Pedidos de este viaje</ChartTitle>
+          {pedidosDelViaje.length === 0 ? <EmptyState icon={Receipt} text="Este viaje no tiene pedidos cargados." /> : (
+            <Card style={{ padding: 0, marginBottom: 18 }}>
+              <Table
+                headers={["Factura", "Pedido", "Cliente", "Valor factura", "Tipo de flete", "Ingreso flete"]}
+                rows={pedidosDelViaje.map((p) => [
+                  p.fatura || "—", p.pedido || "—", p.cliente || "—", fmtMoney(p.valorFatura), p.tipoFlete || "—",
+                  <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
+                ])}
+              />
+            </Card>
+          )}
+
+          <ChartTitle>Costos de este viaje</ChartTitle>
+          {custosDelViaje.length === 0 ? <EmptyState icon={DollarSign} text="Este viaje no tiene costos cargados." /> : (
+            <Card style={{ padding: 0 }}>
+              <Table
+                headers={["Categoría", "Valor", "Fecha", "Obs."]}
+                rows={custosDelViaje.map((c) => [
+                  c.tipo, fmtMoney(c.valor), c.data ? c.data.split("-").reverse().join("/") : "—", c.obs || "—",
+                ])}
+              />
+            </Card>
+          )}
+        </Card>
+        </div>
+      )}
+
+      {!viagemSeleccionada && (
       <div id="report-print-area">
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 20, textTransform: "uppercase" }}>
@@ -1750,6 +1897,7 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
           </div>
         </Card>
       </div>
+      )}
     </div>
   );
 }
