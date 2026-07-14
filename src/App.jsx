@@ -31,6 +31,7 @@ const TIPOS_CUSTO = ["Peajes", "Consumición", "Hospedaje", "Estibaje", "Tape", 
 const ESTADOS_VEICULO = ["Activo", "Inactivo", "Taller"];
 const ESTADOS_MOTORISTA = ["Activo", "Inactivo"];
 const ESTADOS_VIAGEM = ["En curso", "Finalizado"];
+const ESTADOS_PEDIDO = ["Sin estado", "Entregado"];
 
 /* Tarifa (%) que se aplica al valor de la factura de cada pedido, según su tipo de flete.
    Editable por el usuario en la pantalla de Pedidos; 100% por defecto hasta que se ajuste. */
@@ -125,8 +126,8 @@ async function saveKey(key, data) {
    ATOMS
 --------------------------------------------------------------- */
 function EstadoBadge({ estado }) {
-  const color = estado === "Activo" || estado === "Finalizado" ? C.green : estado === "Taller" ? C.red : C.muted;
-  const bg = estado === "Activo" || estado === "Finalizado" ? "rgba(79,121,66,0.12)" : estado === "Taller" ? "rgba(122,15,19,0.10)" : "rgba(110,118,110,0.12)";
+  const color = estado === "Activo" || estado === "Finalizado" || estado === "Entregado" ? C.green : estado === "Taller" ? C.red : C.muted;
+  const bg = estado === "Activo" || estado === "Finalizado" || estado === "Entregado" ? "rgba(79,121,66,0.12)" : estado === "Taller" ? "rgba(122,15,19,0.10)" : "rgba(110,118,110,0.12)";
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20,
@@ -1229,7 +1230,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
 
       <Card style={{ marginBottom: 18, background: "rgba(47,107,47,0.06)", borderColor: C.yellow }}>
         <div style={{ fontSize: 12.5, color: C.muted }}>
-          Hacé clic en un viaje para cargar sus pedidos y costos ahí mismo, sin cambiar de pantalla.
+          Elegí un viaje de la lista para ver sus datos, pedidos, costos y resultado en pestañas, sin cambiar de pantalla.
           Al cargar el KM final, el KM actual del vehículo se actualiza solo.
         </div>
       </Card>
@@ -1377,91 +1378,98 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
       )}
 
       {filtrados.length === 0 ? <EmptyState icon={Package} text={viagens.length === 0 ? "No hay viajes registrados." : "Ningún viaje coincide con los filtros."} /> : (
-        <Card style={{ padding: 0 }}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
-              <thead>
-                <tr>
-                  {cols.map((h, i) => (
-                    <th key={i} style={{
-                      textAlign: "left", padding: "12px 14px", color: C.muted, fontWeight: 700,
-                      fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}`,
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
+        <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16, alignItems: "start" }}>
+          {/* LISTA */}
+          <div>
+            <Card style={{ padding: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12, maxHeight: 640, overflowY: "auto" }}>
                 {sorted.map((v) => {
-                  const s = statsDaViagem(v.id);
-                  const open = expandedId === v.id;
+                  const selected = expandedId === v.id;
                   return (
-                    <React.Fragment key={v.id}>
-                      <tr
-                        onClick={() => setExpandedId(open ? null : v.id)}
-                        style={{ borderBottom: `1px solid ${C.border}`, cursor: "pointer", background: open ? C.raised : "transparent" }}
-                      >
-                        <td style={{ padding: "10px 14px", fontWeight: 700, color: C.muted }}>{v.numero ?? "—"}</td>
-                        <td style={{ padding: "10px 14px" }}>{v.data ? v.data.split("-").reverse().join("/") : "—"}</td>
-                        <td style={{ padding: "10px 14px" }}><PlateChip placa={v.placa} /></td>
-                        <td style={{ padding: "10px 14px", color: C.muted, fontSize: 12.5 }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Building2 size={13} /> {v.sucursal || sucursalDelVehiculo(v.placa) || "—"}</span>
-                        </td>
-                        <td style={{ padding: "10px 14px" }}>{v.motorista || "—"}</td>
-                        <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
-                          <span style={{ cursor: "pointer" }} onClick={() => toggleEstado(v)} title="Clic para cambiar el estado">
-                            <EstadoBadge estado={v.estado || "En curso"} />
-                          </span>
-                        </td>
-                        <td style={{ padding: "10px 14px" }}>
-                          {v.kmInicial && v.kmFinal ? `${fmtNum(Number(v.kmFinal) - Number(v.kmInicial))} km` : "—"}
-                        </td>
-                        <td style={{ padding: "10px 14px" }}>{s.cantidad}</td>
-                        <td style={{ padding: "10px 14px" }}>{fmtMoney(s.valorFacturas)}</td>
-                        <td style={{ padding: "10px 14px", color: C.green, fontWeight: 700 }}>{fmtMoney(s.ingreso)}</td>
-                        <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
-                          <RowActions onEdit={() => setForm({ ...v })} onDelete={() => setConfirmId(v.id)} confirming={confirmId === v.id} onConfirm={() => remove(v.id)} onCancel={() => setConfirmId(null)} />
-                        </td>
-                      </tr>
-                      {open && (
-                        <tr>
-                          <td colSpan={cols.length} style={{ padding: 0, borderBottom: `1px solid ${C.border}` }}>
-                            <ViagemDetalle
-                              viagem={v}
-                              sucursal={v.sucursal || sucursalDelVehiculo(v.placa)}
-                              pedidos={pedidos} setPedidos={setPedidos}
-                              custos={custos} setCustos={setCustos}
-                              tarifas={tarifas}
-                              onClose={() => setExpandedId(null)}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                    <div
+                      key={v.id}
+                      onClick={() => setExpandedId(v.id)}
+                      style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8,
+                        padding: "12px 14px", borderRadius: 8, cursor: "pointer",
+                        border: `1px solid ${selected ? C.yellow : C.border}`,
+                        borderLeft: `4px solid ${C.yellow}`,
+                        background: selected ? C.raised : C.surface,
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 700, fontSize: 14.5, color: C.text }}>Viaje {v.numero}</span>
+                          <EstadoBadge estado={v.estado || "En curso"} />
+                        </div>
+                        <div style={{ fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                          <FileText size={12} /> {v.data ? v.data.split("-").reverse().join("/") : "—"}
+                        </div>
+                        <div style={{ fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                          <Truck size={12} /> {v.placa}
+                        </div>
+                        <div style={{ fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 5 }}>
+                          <Users size={12} /> {v.motorista || "—"}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setForm({ ...v })} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: 5, color: C.muted, cursor: "pointer" }}>
+                          <Pencil size={13} />
+                        </button>
+                        {confirmId === v.id ? (
+                          <div style={{ display: "flex", gap: 3 }}>
+                            <button onClick={() => remove(v.id)} style={{ background: C.red, border: "none", borderRadius: 6, padding: "5px 6px", color: "#fff", cursor: "pointer", fontSize: 10 }}>Sí</button>
+                            <button onClick={() => setConfirmId(null)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.muted, cursor: "pointer", fontSize: 10 }}>No</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmId(v.id)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: 5, color: C.red, cursor: "pointer" }}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-          {totalPaginas > 1 && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
-              <span style={{ fontSize: 12, color: C.muted }}>
-                Mostrando {(paginaActual - 1) * PAGE_SIZE + 1}–{Math.min(paginaActual * PAGE_SIZE, filtrados.length)} de {filtrados.length}
-              </span>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <Button variant="ghost" onClick={() => setPagina(Math.max(1, paginaActual - 1))} style={paginaActual === 1 ? { opacity: 0.4, pointerEvents: "none" } : {}}>Anterior</Button>
-                <span style={{ fontSize: 12.5, color: C.muted }}>Página {paginaActual} de {totalPaginas}</span>
-                <Button variant="ghost" onClick={() => setPagina(Math.min(totalPaginas, paginaActual + 1))} style={paginaActual === totalPaginas ? { opacity: 0.4, pointerEvents: "none" } : {}}>Siguiente</Button>
               </div>
-            </div>
-          )}
-        </Card>
+              {totalPaginas > 1 && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderTop: `1px solid ${C.border}` }}>
+                  <Button variant="ghost" onClick={() => setPagina(Math.max(1, paginaActual - 1))} style={paginaActual === 1 ? { opacity: 0.4, pointerEvents: "none" } : {}}>Anterior</Button>
+                  <span style={{ fontSize: 11.5, color: C.muted }}>{paginaActual}/{totalPaginas}</span>
+                  <Button variant="ghost" onClick={() => setPagina(Math.min(totalPaginas, paginaActual + 1))} style={paginaActual === totalPaginas ? { opacity: 0.4, pointerEvents: "none" } : {}}>Siguiente</Button>
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* DETALLE */}
+          <div>
+            {(() => {
+              const viagemSelecionada = filtrados.find((v) => v.id === expandedId) || sorted[0];
+              if (!viagemSelecionada) return <EmptyState icon={Package} text="Elegí un viaje de la lista para ver su detalle." />;
+              return (
+                <ViagemDetalle
+                  viagem={viagemSelecionada}
+                  sucursal={viagemSelecionada.sucursal || sucursalDelVehiculo(viagemSelecionada.placa)}
+                  pedidos={pedidos} setPedidos={setPedidos}
+                  custos={custos} setCustos={setCustos}
+                  abastecimentos={abastecimentos}
+                  veiculos={veiculos}
+                  tarifas={tarifas}
+                  onEdit={(v) => setForm({ ...v })}
+                  onToggleEstado={toggleEstado}
+                />
+              );
+            })()}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-/* Panel embebido: pedidos y costos del viaje, editables sin salir de la pantalla de Viajes. */
-function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCustos, tarifas, onClose }) {
+/* Panel embebido: pedidos, costos y resultado del viaje, editables sin salir de la pantalla de Viajes. */
+function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCustos, abastecimentos, tarifas, veiculos, onEdit, onToggleEstado }) {
+  const [tab, setTab] = useState("datos");
   const [pedidoRows, setPedidoRows] = useState([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
   const [custoRows, setCustoRows] = useState([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }]);
   const [confirmPedidoId, setConfirmPedidoId] = useState(null);
@@ -1469,6 +1477,10 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
 
   const pedidosDoViagem = pedidos.filter((p) => p.viagemId === viagem.id);
   const custosDoViagem = custos.filter((c) => c.viagemId === viagem.id);
+  const abastecimentosDoViagem = (abastecimentos || []).filter((a) => a.viagemId === viagem.id);
+  const vehiculo = (veiculos || []).find((x) => x.placa === viagem.placa);
+  const entregados = pedidosDoViagem.filter((p) => p.estado === "Entregado").length;
+  const totalPedidos = pedidosDoViagem.reduce((s, p) => s + Number(p.valorFatura || 0), 0);
 
   const updatePedidoRow = (idx, field, value) => setPedidoRows(pedidoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
   const addPedidoRow = () => setPedidoRows([...pedidoRows, emptyPedidoRow()]);
@@ -1481,6 +1493,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
     setPedidoRows([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
   };
   const removePedido = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmPedidoId(null); };
+  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: x.estado === "Entregado" ? "Sin estado" : "Entregado" } : x)));
 
   const updateCustoRow = (idx, field, value) => setCustoRows(custoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
   const addCustoRow = () => setCustoRows([...custoRows, { tipo: "", valor: "", data: "", obs: "" }]);
@@ -1490,101 +1503,190 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
     if (validas.length === 0) return;
     const nuevos = validas.map((r) => ({ ...r, placa: viagem.placa, viagemId: viagem.id, id: uid() }));
     setCustos([...custos, ...nuevos]);
-    setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }]);
+    setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }]);
   };
   const removeCusto = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmCustoId(null); };
 
+  const fleteTotal = pedidosDoViagem.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
+  const combustibleValor = abastecimentosDoViagem.reduce((s, a) => s + Number(a.valor || 0), 0);
+  const combustibleLitros = abastecimentosDoViagem.reduce((s, a) => s + Number(a.litros || 0), 0);
+  const custoTotal = custosDoViagem.reduce((s, c) => s + Number(c.valor || 0), 0) + combustibleValor;
+  const lucro = fleteTotal - custoTotal;
+  const margen = fleteTotal > 0 ? (lucro / fleteTotal) * 100 : 0;
+  const km = viagem.kmInicial && viagem.kmFinal ? Number(viagem.kmFinal) - Number(viagem.kmInicial) : null;
+
+  const TABS = [
+    { id: "datos", label: "Datos" },
+    { id: "pedidos", label: "Pedidos" },
+    { id: "costos", label: "Costos" },
+    { id: "resultado", label: "Resultado" },
+  ];
+
   return (
-    <div style={{ background: C.bg, padding: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>
-          Viaje N° {viagem.numero} · <PlateChip placa={viagem.placa} /> · <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: C.muted, fontWeight: 600 }}><Building2 size={13} /> {sucursal || "—"}</span>
+    <div style={{ background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+      <div style={{ padding: "18px 20px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 22, textTransform: "uppercase", color: C.text }}>
+            Viaje {viagem.numero}
+          </div>
+          <Button variant="ghost" onClick={() => onEdit(viagem)}><Pencil size={14} /> Editar</Button>
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}><X size={16} /></button>
+        <div style={{ marginBottom: 14 }}>
+          <span style={{ cursor: "pointer" }} onClick={() => onToggleEstado(viagem)} title="Clic para cambiar el estado">
+            <EstadoBadge estado={viagem.estado || "En curso"} />
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 4, borderBottom: `2px solid ${C.border}` }}>
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: "10px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 700,
+              color: tab === t.id ? C.yellow : C.muted,
+              borderBottom: tab === t.id ? `2px solid ${C.yellow}` : "2px solid transparent", marginBottom: -2,
+            }}>{t.label}</button>
+          ))}
+        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "flex-start" }}>
-        {/* PEDIDOS */}
-        <div>
-          <ChartTitle>Pedidos de este viaje</ChartTitle>
-          {pedidosDoViagem.length > 0 && (
-            <Card style={{ padding: 0, marginBottom: 10 }}>
-              <Table
-                headers={["Factura", "Cliente", "Valor", "Tipo", "Ingreso", ""]}
-                rows={pedidosDoViagem.map((p) => [
-                  p.fatura || "—", p.cliente || "—", fmtMoney(p.valorFatura), p.tipoFlete || "—",
-                  <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
-                  <RowActions onEdit={() => {}} onDelete={() => setConfirmPedidoId(p.id)} confirming={confirmPedidoId === p.id} onConfirm={() => removePedido(p.id)} onCancel={() => setConfirmPedidoId(null)} />,
-                ])}
-              />
-            </Card>
-          )}
-          <Card>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {pedidoRows.map((row, idx) => (
-                <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <input style={inputStyle} placeholder="Factura" value={row.fatura} onChange={(e) => updatePedidoRow(idx, "fatura", e.target.value)} />
-                  <input style={inputStyle} placeholder="Pedido" value={row.pedido} onChange={(e) => updatePedidoRow(idx, "pedido", e.target.value)} />
-                  <input style={inputStyle} placeholder="Cliente" value={row.cliente} onChange={(e) => updatePedidoRow(idx, "cliente", e.target.value)} />
-                  <input type="number" style={inputStyle} placeholder="Valor factura (₲)" value={row.valorFatura} onChange={(e) => updatePedidoRow(idx, "valorFatura", e.target.value)} />
-                  <select style={{ ...inputStyle, gridColumn: "1 / -1" }} value={row.tipoFlete} onChange={(e) => updatePedidoRow(idx, "tipoFlete", e.target.value)}>
-                    <option value="">Tipo de flete</option>
-                    {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  {pedidoRows.length > 1 && (
-                    <button type="button" onClick={() => removePedidoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
-                      <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
-                    </button>
-                  )}
+      <div style={{ padding: 20 }}>
+        {tab === "datos" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 0, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+            {[
+              { icon: Truck, label: "Placa", value: <PlateChip placa={viagem.placa} /> },
+              { icon: Users, label: "Chofer", value: viagem.motorista || "—" },
+              { icon: Building2, label: "Sucursal", value: sucursal || "—" },
+              { icon: FileText, label: "Fecha salida", value: viagem.data ? viagem.data.split("-").reverse().join("/") : "—" },
+              { icon: FileText, label: "Fecha llegada", value: viagem.dataChegada ? viagem.dataChegada.split("-").reverse().join("/") : "—" },
+              { icon: Gauge, label: "KM recorrido", value: km !== null ? `${fmtNum(km)} km` : "—" },
+              { icon: Package, label: "Peso vehículo (kg)", value: vehiculo ? fmtNum(vehiculo.peso) : "—" },
+            ].map((r, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderTop: i < 2 ? "none" : `1px solid ${C.border}`, borderLeft: i % 2 === 1 ? `1px solid ${C.border}` : "none" }}>
+                <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, flexShrink: 0 }}>
+                  <r.icon size={14} />
                 </div>
-              ))}
-              <div style={{ display: "flex", gap: 8 }}>
-                <Button variant="ghost" onClick={addPedidoRow}><Plus size={13} /> Otra factura</Button>
-                <Button onClick={savePedidos}><Check size={13} /> Guardar pedidos</Button>
+                <div>
+                  <div style={{ fontSize: 10.5, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>{r.label}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>{r.value}</div>
+                </div>
               </div>
-            </div>
-          </Card>
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* COSTOS */}
-        <div>
-          <ChartTitle>Costos de este viaje</ChartTitle>
-          {custosDoViagem.length > 0 && (
-            <Card style={{ padding: 0, marginBottom: 10 }}>
-              <Table
-                headers={["Categoría", "Valor", "Obs.", ""]}
-                rows={custosDoViagem.map((c) => [
-                  c.tipo, fmtMoney(c.valor), c.obs || "—",
-                  <RowActions onEdit={() => {}} onDelete={() => setConfirmCustoId(c.id)} confirming={confirmCustoId === c.id} onConfirm={() => removeCusto(c.id)} onCancel={() => setConfirmCustoId(null)} />,
-                ])}
-              />
-            </Card>
-          )}
-          <Card>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {custoRows.map((row, idx) => (
-                <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <select style={inputStyle} value={row.tipo} onChange={(e) => updateCustoRow(idx, "tipo", e.target.value)}>
-                    <option value="">Categoría</option>
-                    {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <input type="number" style={inputStyle} placeholder="Valor (₲)" value={row.valor} onChange={(e) => updateCustoRow(idx, "valor", e.target.value)} />
-                  <input type="date" style={inputStyle} value={row.data} onChange={(e) => updateCustoRow(idx, "data", e.target.value)} />
-                  <input style={inputStyle} placeholder="Observación" value={row.obs} onChange={(e) => updateCustoRow(idx, "obs", e.target.value)} />
-                  {custoRows.length > 1 && (
-                    <button type="button" onClick={() => removeCustoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
-                      <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
-                    </button>
-                  )}
-                </div>
-              ))}
-              <div style={{ display: "flex", gap: 8 }}>
-                <Button variant="ghost" onClick={addCustoRow}><Plus size={13} /> Otro costo</Button>
-                <Button onClick={saveCustos}><Check size={13} /> Guardar costos</Button>
-              </div>
+        {tab === "pedidos" && (
+          <div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17 }}>Pedidos</div>
+              <div style={{ fontSize: 12, color: C.muted }}>{pedidosDoViagem.length} registrados · {entregados} entregados · {fmtMoney(totalPedidos)}</div>
             </div>
-          </Card>
-        </div>
+
+            {pedidosDoViagem.length > 0 && (
+              <Card style={{ padding: 0, marginBottom: 14 }}>
+                <Table
+                  headers={["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto", "Estado", ""]}
+                  rows={pedidosDoViagem.map((p) => [
+                    p.fatura || "—", p.pedido || "—", p.cliente || "—", p.tipoFlete || "—",
+                    fmtMoney(p.valorFatura),
+                    <span style={{ cursor: "pointer" }} onClick={() => toggleEstadoPedido(p)} title="Clic para cambiar el estado">
+                      <EstadoBadge estado={p.estado || "Sin estado"} />
+                    </span>,
+                    <RowActions onEdit={() => {}} onDelete={() => setConfirmPedidoId(p.id)} confirming={confirmPedidoId === p.id} onConfirm={() => removePedido(p.id)} onCancel={() => setConfirmPedidoId(null)} />,
+                  ])}
+                />
+              </Card>
+            )}
+
+            <Card>
+              <ChartTitle>Agregar pedidos</ChartTitle>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {pedidoRows.map((row, idx) => (
+                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <input style={inputStyle} placeholder="Factura" value={row.fatura} onChange={(e) => updatePedidoRow(idx, "fatura", e.target.value)} />
+                    <input style={inputStyle} placeholder="Pedido" value={row.pedido} onChange={(e) => updatePedidoRow(idx, "pedido", e.target.value)} />
+                    <input style={inputStyle} placeholder="Cliente" value={row.cliente} onChange={(e) => updatePedidoRow(idx, "cliente", e.target.value)} />
+                    <input type="number" style={inputStyle} placeholder="Valor factura (₲)" value={row.valorFatura} onChange={(e) => updatePedidoRow(idx, "valorFatura", e.target.value)} />
+                    <select style={inputStyle} value={row.tipoFlete} onChange={(e) => updatePedidoRow(idx, "tipoFlete", e.target.value)}>
+                      <option value="">Tipo de flete</option>
+                      {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select style={inputStyle} value={row.estado || "Sin estado"} onChange={(e) => updatePedidoRow(idx, "estado", e.target.value)}>
+                      {ESTADOS_PEDIDO.map((e) => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                    {pedidoRows.length > 1 && (
+                      <button type="button" onClick={() => removePedidoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
+                        <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button variant="ghost" onClick={addPedidoRow}><Plus size={13} /> Otra factura</Button>
+                  <Button onClick={savePedidos}><Check size={13} /> Guardar pedidos</Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === "costos" && (
+          <div>
+            <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 12 }}>Costos</div>
+            {custosDoViagem.length > 0 && (
+              <Card style={{ padding: 0, marginBottom: 14 }}>
+                <Table
+                  headers={["Categoría", "Valor", "Fecha", "Obs.", ""]}
+                  rows={custosDoViagem.map((c) => [
+                    c.tipo, fmtMoney(c.valor), c.data ? c.data.split("-").reverse().join("/") : "—", c.obs || "—",
+                    <RowActions onEdit={() => {}} onDelete={() => setConfirmCustoId(c.id)} confirming={confirmCustoId === c.id} onConfirm={() => removeCusto(c.id)} onCancel={() => setConfirmCustoId(null)} />,
+                  ])}
+                />
+              </Card>
+            )}
+            <Card>
+              <ChartTitle>Agregar costos</ChartTitle>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {custoRows.map((row, idx) => (
+                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <select style={inputStyle} value={row.tipo} onChange={(e) => updateCustoRow(idx, "tipo", e.target.value)}>
+                      <option value="">Categoría</option>
+                      {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <input type="number" style={inputStyle} placeholder="Valor (₲)" value={row.valor} onChange={(e) => updateCustoRow(idx, "valor", e.target.value)} />
+                    <input type="date" style={inputStyle} value={row.data} onChange={(e) => updateCustoRow(idx, "data", e.target.value)} />
+                    <input style={inputStyle} placeholder="Observación" value={row.obs} onChange={(e) => updateCustoRow(idx, "obs", e.target.value)} />
+                    {custoRows.length > 1 && (
+                      <button type="button" onClick={() => removeCustoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
+                        <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button variant="ghost" onClick={addCustoRow}><Plus size={13} /> Otro costo</Button>
+                  <Button onClick={saveCustos}><Check size={13} /> Guardar costos</Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {tab === "resultado" && (
+          <div>
+            <Card style={{
+              marginBottom: 16, textAlign: "center",
+              background: lucro >= 0 ? "rgba(47,107,47,0.10)" : "rgba(122,15,19,0.10)",
+              borderColor: lucro >= 0 ? C.green : C.red,
+            }}>
+              <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Lucro / Pérdida del viaje</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: lucro >= 0 ? C.green : C.red, fontFamily: "'Oswald',sans-serif" }}>{fmtMoney(lucro)}</div>
+            </Card>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+              <KPI icon={Receipt} label="Flete total" value={fmtMoney(fleteTotal)} />
+              <KPI icon={DollarSign} label="Costo total" value={fmtMoney(custoTotal)} />
+              <KPI icon={Fuel} label="Combustible" value={combustibleLitros ? `${fmtMoney(combustibleValor)} (${fmtNum(combustibleLitros)} L)` : fmtMoney(combustibleValor)} />
+              <KPI icon={Gauge} label="Margen de lucro" value={`${margen.toFixed(1)}%`} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1594,7 +1696,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
    PEDIDOS
 --------------------------------------------------------------- */
 function emptyPedidoRow() {
-  return { fatura: "", pedido: "", cliente: "", valorFatura: "", tipoFlete: "" };
+  return { fatura: "", pedido: "", cliente: "", valorFatura: "", tipoFlete: "", estado: "Sin estado" };
 }
 
 function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarifas }) {
@@ -1607,7 +1709,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
 
   const openNew = () => setForm({ viagemId: "", rows: [emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()], editId: null });
   const openNewUnico = () => setForm({ viagemId: "", rows: [emptyPedidoRow()], editId: null });
-  const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete }], editId: p.id });
+  const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete, estado: p.estado || "Sin estado" }], editId: p.id });
 
   const updateRow = (idx, field, value) => {
     setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)) });
@@ -1630,6 +1732,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
     setForm(null);
   };
   const remove = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmId(null); };
+  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: x.estado === "Entregado" ? "Sin estado" : "Entregado" } : x)));
 
   const sorted = [...pedidos].sort((a, b) => {
     const va = viagemById(a.viagemId)?.data || "";
@@ -1702,6 +1805,11 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
                       {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </Field>
+                  <Field label="Estado del pedido">
+                    <select style={inputStyle} value={row.estado || "Sin estado"} onChange={(e) => updateRow(idx, "estado", e.target.value)}>
+                      {ESTADOS_PEDIDO.map((e) => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                  </Field>
                   {!form.editId && form.rows.length > 1 && (
                     <button type="button" onClick={() => removeRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start" }}>
                       <Trash2 size={16} />
@@ -1725,7 +1833,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
       {sorted.length === 0 ? <EmptyState icon={Receipt} text="No hay pedidos registrados." /> : (
         <Card style={{ padding: 0 }}>
           <Table
-            headers={["Viaje N°", "Fecha", "Vehículo", "Sucursal", "Factura", "Pedido", "Cliente", "Valor factura", "Tipo de flete", "Ingreso flete", ""]}
+            headers={["Viaje N°", "Fecha", "Vehículo", "Sucursal", "Factura", "Pedido", "Cliente", "Valor factura", "Tipo de flete", "Estado", "Ingreso flete", ""]}
             rows={sorted.map((p) => {
               const v = viagemById(p.viagemId);
               const sucursal = v ? veiculos.find((x) => x.placa === v.placa)?.sucursal : null;
@@ -1736,6 +1844,9 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
                 sucursal || "—",
                 p.fatura || "—", p.pedido || "—", p.cliente || "—",
                 fmtMoney(p.valorFatura), p.tipoFlete || "—",
+                <span style={{ cursor: "pointer" }} onClick={() => toggleEstadoPedido(p)} title="Clic para cambiar el estado">
+                  <EstadoBadge estado={p.estado || "Sin estado"} />
+                </span>,
                 <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
                 <RowActions onEdit={() => openEdit(p)} onDelete={() => setConfirmId(p.id)} confirming={confirmId === p.id} onConfirm={() => remove(p.id)} onCancel={() => setConfirmId(null)} />,
               ];
