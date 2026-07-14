@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   Truck, Users, Wrench, Package, DollarSign, LayoutDashboard, Plus, Trash2, X,
-  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid,
+  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid, ClipboardPaste, LogOut,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------
@@ -31,7 +31,7 @@ const TIPOS_CUSTO = ["Peajes", "Consumición", "Hospedaje", "Estibaje", "Tape", 
 const ESTADOS_VEICULO = ["Activo", "Inactivo", "Taller"];
 const ESTADOS_MOTORISTA = ["Activo", "Inactivo"];
 const ESTADOS_VIAGEM = ["En curso", "Finalizado"];
-const ESTADOS_PEDIDO = ["Sin estado", "Entregado"];
+const ESTADOS_PEDIDO = ["Pendiente", "Entregado", "Rechazado", "Devuelto"];
 
 /* Tarifa (%) que se aplica al valor de la factura de cada pedido, según su tipo de flete.
    Editable por el usuario en la pantalla de Pedidos; 100% por defecto hasta que se ajuste. */
@@ -92,6 +92,25 @@ const fmtNum = (n) => (n === null || n === undefined || n === "" ? "—" : Numbe
 const fmtMoney = (n) => `₲ ${Math.round(Number(n || 0)).toLocaleString("es-PY")}`;
 const uid = () => Date.now() + Math.random();
 
+/* Pega texto copiado desde una planilla (columnas separadas por tabulaciones) y arma filas.
+   campos: nombres de campo en el mismo orden que las columnas copiadas. */
+async function pegarDesdeExcel(setRows, campos, emptyRow) {
+  try {
+    const texto = await navigator.clipboard.readText();
+    const lineas = texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lineas.length === 0) return;
+    const nuevas = lineas.map((linea) => {
+      const cols = linea.split("\t");
+      const base = emptyRow ? emptyRow() : {};
+      campos.forEach((campo, i) => { if (cols[i] !== undefined) base[campo] = cols[i].trim(); });
+      return base;
+    });
+    setRows(nuevas);
+  } catch (e) {
+    alert("No se pudo leer el portapapeles. Copiá las celdas desde Excel (Ctrl+C) y volvé a tocar \"Pegar del Excel\".");
+  }
+}
+
 /* Días que faltan para una fecha de vencimiento (negativo si ya venció). */
 function diasParaVencer(dataStr) {
   if (!dataStr) return null;
@@ -126,8 +145,10 @@ async function saveKey(key, data) {
    ATOMS
 --------------------------------------------------------------- */
 function EstadoBadge({ estado }) {
-  const color = estado === "Activo" || estado === "Finalizado" || estado === "Entregado" ? C.green : estado === "Taller" ? C.red : C.muted;
-  const bg = estado === "Activo" || estado === "Finalizado" || estado === "Entregado" ? "rgba(79,121,66,0.12)" : estado === "Taller" ? "rgba(122,15,19,0.10)" : "rgba(110,118,110,0.12)";
+  const esVerde = estado === "Activo" || estado === "Finalizado" || estado === "Entregado";
+  const esRojo = estado === "Taller" || estado === "Rechazado" || estado === "Devuelto";
+  const color = esVerde ? C.green : esRojo ? C.red : C.muted;
+  const bg = esVerde ? "rgba(79,121,66,0.12)" : esRojo ? "rgba(122,15,19,0.10)" : "rgba(110,118,110,0.12)";
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20,
@@ -229,6 +250,17 @@ function ConfirmRow({ onConfirm, onCancel }) {
 --------------------------------------------------------------- */
 export default function App() {
   const [loading, setLoading] = useState(true);
+  const tieneAuth = typeof window !== "undefined" && !!window.auth;
+  const [sesion, setSesion] = useState(null);
+  const [cargandoSesion, setCargandoSesion] = useState(tieneAuth);
+
+  useEffect(() => {
+    if (!tieneAuth) return;
+    window.auth.getSession().then((s) => { setSesion(s); setCargandoSesion(false); });
+    const unsub = window.auth.onAuthChange((s) => setSesion(s));
+    return () => { if (unsub) unsub(); };
+  }, []);
+
   const [tab, setTab] = useState("dashboard");
   const [veiculos, setVeiculos] = useState([]);
   const [motoristas, setMotoristas] = useState([]);
@@ -282,16 +314,31 @@ export default function App() {
     saveKey(key, data);
   }, []);
 
-  const nav = [
-    { id: "dashboard", label: "Panel de Control", icon: LayoutDashboard },
-    { id: "veiculos", label: "Vehículos", icon: Truck },
-    { id: "motoristas", label: "Choferes", icon: Users },
-    { id: "viagens", label: "Viajes / Fletes", icon: Package },
-    { id: "pedidos", label: "Pedidos", icon: Receipt },
-    { id: "abastecimento", label: "Combustible", icon: Fuel },
-    { id: "custos", label: "Costos", icon: DollarSign },
-    { id: "manutencao", label: "Mantenimiento", icon: Wrench },
-    { id: "relatorios", label: "Reportes", icon: FileText },
+  const navGroups = [
+    {
+      section: null,
+      items: [
+        { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+        { id: "viagens", label: "Viajes", icon: Truck },
+        { id: "pedidos", label: "Pedidos", icon: Receipt },
+      ],
+    },
+    {
+      section: "Cadastros",
+      items: [
+        { id: "veiculos", label: "Vehículos", icon: Package },
+        { id: "motoristas", label: "Choferes", icon: Users },
+      ],
+    },
+    {
+      section: "Operación",
+      items: [
+        { id: "custos", label: "Costos", icon: DollarSign },
+        { id: "abastecimento", label: "Abastecimientos", icon: Fuel },
+        { id: "manutencao", label: "Mantenimiento", icon: Wrench },
+        { id: "relatorios", label: "Reportes", icon: FileText },
+      ],
+    },
   ];
 
   const alertasDinatranApp = veiculos
@@ -300,6 +347,20 @@ export default function App() {
     .filter((a) => a.dias <= 30)
     .sort((a, b) => a.dias - b.dias);
   const hayDinatranVencido = alertasDinatranApp.some((a) => a.dias < 0);
+
+  if (tieneAuth && cargandoSesion) {
+    return (
+      <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>
+        <Loader2 className="spin" size={22} style={{ marginRight: 8 }} />
+        Verificando sesión...
+        <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
+  if (tieneAuth && !sesion) {
+    return <Login />;
+  }
 
   if (loading) {
     return (
@@ -353,45 +414,64 @@ export default function App() {
 
       {/* SIDEBAR */}
       <div style={{
-        width: 220, flexShrink: 0, background: "#FFFFFF", borderRight: `1px solid ${C.border}`,
+        width: 230, flexShrink: 0, background: "#1B2420", borderRight: `1px solid #2A342E`,
         display: "flex", flexDirection: "column", position: "sticky", top: 0, alignSelf: "flex-start", minHeight: "100vh",
       }}>
-        <div style={{
-          height: 6, width: "100%",
-          background: `repeating-linear-gradient(45deg, ${C.yellow} 0 10px, #FFFFFF 10px 20px)`,
-        }} />
-        <div style={{ padding: "18px 16px 10px" }}>
-          <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 18, letterSpacing: 1, textTransform: "uppercase", color: C.text }}>
+        <div style={{ padding: "20px 18px 14px" }}>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17, letterSpacing: 1, textTransform: "uppercase", color: "#fff" }}>
             Control <span style={{ color: C.yellow }}>de Flota</span>
           </div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Registros y Panel de Control</div>
+          <div style={{ fontSize: 10.5, color: "#8B9690", marginTop: 2 }}>Registros y Panel de Control</div>
         </div>
-        <div style={{ flex: 1, padding: "10px 10px", display: "flex", flexDirection: "column", gap: 3 }}>
-          {nav.map((n) => {
-            const active = tab === n.id;
-            return (
-              <button key={n.id} onClick={() => setTab(n.id)} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 7,
-                border: "none", cursor: "pointer", textAlign: "left", fontSize: 13.5, fontWeight: 600,
-                background: active ? C.raised : "transparent",
-                color: active ? C.yellow : C.muted,
-                borderLeft: active ? `3px solid ${C.yellow}` : "3px solid transparent",
-              }}>
-                <n.icon size={17} />
-                {n.label}
-              </button>
-            );
-          })}
+        <div style={{ flex: 1, padding: "6px 12px", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
+          {navGroups.map((group, gi) => (
+            <div key={gi} style={{ marginTop: group.section ? 16 : 0 }}>
+              {group.section && (
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#6E796F", textTransform: "uppercase", letterSpacing: 0.8, padding: "0 10px", marginBottom: 6 }}>
+                  {group.section}
+                </div>
+              )}
+              {group.items.map((n) => {
+                const active = tab === n.id;
+                return (
+                  <button key={n.id} onClick={() => setTab(n.id)} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8,
+                    border: "none", cursor: "pointer", textAlign: "left", fontSize: 13.5, fontWeight: 600, width: "100%",
+                    background: active ? C.yellow : "transparent",
+                    color: active ? "#fff" : "#9AA69C",
+                    marginBottom: 2,
+                  }}>
+                    <n.icon size={16} />
+                    {n.label}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
-        <div style={{ padding: 14, fontSize: 10.5, color: C.muted, borderTop: `1px solid ${C.border}` }}>
-          Los datos se guardan automáticamente en esta app.
+        <div style={{ padding: 14, borderTop: "1px solid #2A342E" }}>
+          {tieneAuth && (
+            <button
+              onClick={() => window.auth.signOut()}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: 10,
+                background: "none", border: "1px solid #2A342E", borderRadius: 7, padding: "8px 10px",
+                color: "#9AA69C", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+              }}
+            >
+              <LogOut size={14} /> Cerrar sesión
+            </button>
+          )}
+          <div style={{ fontSize: 10, color: "#6E796F" }}>
+            Los datos se guardan automáticamente en esta app.
+          </div>
         </div>
       </div>
 
       {/* MAIN */}
       <div style={{ flex: 1, padding: "28px 34px", minWidth: 0 }}>
         {tab === "dashboard" && (
-          <Dashboard veiculos={veiculos} viagens={viagens} custos={custos} manutencoes={manutencoes} abastecimentos={abastecimentos} pedidos={pedidos} tarifas={tarifas} />
+          <Dashboard veiculos={veiculos} viagens={viagens} custos={custos} manutencoes={manutencoes} abastecimentos={abastecimentos} pedidos={pedidos} tarifas={tarifas} sucursales={sucursales} />
         )}
         {tab === "veiculos" && (
           <VeiculosPage veiculos={veiculos} setVeiculos={(d) => persist("veiculos", setVeiculos, d)} motoristas={motoristas} sucursales={sucursales} setSucursales={(d) => persist("sucursales", setSucursales, d)} />
@@ -434,7 +514,78 @@ export default function App() {
 /* ---------------------------------------------------------------
    DASHBOARD
 --------------------------------------------------------------- */
-function Dashboard({ veiculos, viagens, custos, manutencoes, abastecimentos, pedidos, tarifas }) {
+/* ---------------------------------------------------------------
+   LOGIN
+--------------------------------------------------------------- */
+function Login() {
+  const [usuario, setUsuario] = useState("");
+  const [clave, setClave] = useState("");
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+
+  const entrar = async (e) => {
+    e.preventDefault();
+    setError("");
+    setCargando(true);
+    try {
+      await window.auth.signIn(usuario, clave);
+    } catch (err) {
+      setError("Usuario o contraseña incorrectos.");
+    }
+    setCargando(false);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Inter, system-ui, sans-serif" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600;700&display=swap');`}</style>
+      <form onSubmit={entrar} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 32, width: 320 }}>
+        <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 20, textTransform: "uppercase", marginBottom: 4, color: C.text }}>
+          Control <span style={{ color: C.yellow }}>de Flota</span>
+        </div>
+        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 20 }}>Ingresá tu usuario y contraseña para continuar.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Usuario (email)">
+            <input type="email" style={inputStyle} value={usuario} onChange={(e) => setUsuario(e.target.value)} required autoFocus />
+          </Field>
+          <Field label="Contraseña">
+            <input type="password" style={inputStyle} value={clave} onChange={(e) => setClave(e.target.value)} required />
+          </Field>
+          {error && <div style={{ color: C.red, fontSize: 12.5 }}>{error}</div>}
+          <Button type="submit" style={{ justifyContent: "center", marginTop: 4 }}>{cargando ? "Ingresando..." : "Ingresar"}</Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Dashboard({ veiculos: veiculosProp, viagens: viagensProp, custos: custosProp, manutencoes, abastecimentos: abastecimentosProp, pedidos: pedidosProp, tarifas, sucursales }) {
+  const [filtroPlaca, setFiltroPlaca] = useState("");
+  const [filtroMes, setFiltroMes] = useState("");
+  const [filtroSucursal, setFiltroSucursal] = useState("");
+
+  const mesDeData = (d) => (d ? MESES[new Date(d + "T00:00:00").getMonth()] : null);
+  const sucursalDelVehiculo = (placa) => veiculosProp.find((v) => v.placa === placa)?.sucursal || "";
+
+  const veiculos = veiculosProp.filter((v) => (!filtroPlaca || v.placa === filtroPlaca) && (!filtroSucursal || v.sucursal === filtroSucursal));
+  const viagens = viagensProp.filter((v) =>
+    (!filtroPlaca || v.placa === filtroPlaca) &&
+    (!filtroMes || v.mes === filtroMes) &&
+    (!filtroSucursal || (v.sucursal || sucursalDelVehiculo(v.placa)) === filtroSucursal)
+  );
+  const viagensIds = new Set(viagens.map((v) => v.id));
+  const custos = custosProp.filter((c) =>
+    (!filtroPlaca || c.placa === filtroPlaca) &&
+    (!filtroMes || mesDeData(c.data) === filtroMes) &&
+    (!filtroSucursal || sucursalDelVehiculo(c.placa) === filtroSucursal)
+  );
+  const abastecimentos = abastecimentosProp.filter((a) =>
+    (!filtroPlaca || a.placa === filtroPlaca) &&
+    (!filtroMes || mesDeData(a.data) === filtroMes) &&
+    (!filtroSucursal || sucursalDelVehiculo(a.placa) === filtroSucursal)
+  );
+  const pedidos = pedidosProp.filter((p) => viagensIds.has(p.viagemId));
+  const hayFiltros = filtroPlaca || filtroMes || filtroSucursal;
+
   const totalCustosGerais = custos.reduce((s, c) => s + Number(c.valor || 0), 0);
   const totalCombustivel = abastecimentos.reduce((s, a) => s + Number(a.valor || 0), 0);
   const totalGasto = totalCustosGerais + totalCombustivel;
@@ -507,6 +658,34 @@ function Dashboard({ veiculos, viagens, custos, manutencoes, abastecimentos, ped
   return (
     <div>
       <SectionHeader title="Panel de Control" subtitle="Resumen general de la flota, costos, viajes y mantenimiento" />
+
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,220px))", gap: 12, alignItems: "flex-end" }}>
+          <Field label="Vehículo">
+            <select style={inputStyle} value={filtroPlaca} onChange={(e) => setFiltroPlaca(e.target.value)}>
+              <option value="">Todos</option>
+              {veiculosProp.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+            </select>
+          </Field>
+          <Field label="Mes">
+            <select style={inputStyle} value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)}>
+              <option value="">Todos</option>
+              {MESES.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </Field>
+          <Field label="Sucursal">
+            <select style={inputStyle} value={filtroSucursal} onChange={(e) => setFiltroSucursal(e.target.value)}>
+              <option value="">Todas</option>
+              {(sucursales || []).map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          {hayFiltros && (
+            <Button variant="ghost" onClick={() => { setFiltroPlaca(""); setFiltroMes(""); setFiltroSucursal(""); }}>
+              <X size={14} /> Limpiar filtros
+            </Button>
+          )}
+        </div>
+      </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 22 }}>
         <KPI icon={Truck} label="Vehículos registrados" value={veiculos.length} />
@@ -1493,7 +1672,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
     setPedidoRows([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
   };
   const removePedido = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmPedidoId(null); };
-  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: x.estado === "Entregado" ? "Sin estado" : "Entregado" } : x)));
+  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: ESTADOS_PEDIDO[(ESTADOS_PEDIDO.indexOf(x.estado || "Pendiente") + 1) % ESTADOS_PEDIDO.length] } : x)));
 
   const updateCustoRow = (idx, field, value) => setCustoRows(custoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
   const addCustoRow = () => setCustoRows([...custoRows, { tipo: "", valor: "", data: "", obs: "" }]);
@@ -1574,9 +1753,15 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
 
         {tab === "pedidos" && (
           <div>
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17 }}>Pedidos</div>
-              <div style={{ fontSize: 12, color: C.muted }}>{pedidosDoViagem.length} registrados · {entregados} entregados · {fmtMoney(totalPedidos)}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17 }}>Pedidos</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{pedidosDoViagem.length} registrados · {entregados} entregados · {fmtMoney(totalPedidos)}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="ghost" onClick={() => setPedidoRows([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()])}><LayoutGrid size={14} /> Varios Pedidos</Button>
+                <Button onClick={() => setPedidoRows([emptyPedidoRow()])}><Plus size={14} /> Nuevo Pedido</Button>
+              </div>
             </div>
 
             {pedidosDoViagem.length > 0 && (
@@ -1587,7 +1772,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
                     p.fatura || "—", p.pedido || "—", p.cliente || "—", p.tipoFlete || "—",
                     fmtMoney(p.valorFatura),
                     <span style={{ cursor: "pointer" }} onClick={() => toggleEstadoPedido(p)} title="Clic para cambiar el estado">
-                      <EstadoBadge estado={p.estado || "Sin estado"} />
+                      <EstadoBadge estado={p.estado || "Pendiente"} />
                     </span>,
                     <RowActions onEdit={() => {}} onDelete={() => setConfirmPedidoId(p.id)} confirming={confirmPedidoId === p.id} onConfirm={() => removePedido(p.id)} onCancel={() => setConfirmPedidoId(null)} />,
                   ])}
@@ -1595,31 +1780,56 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
               </Card>
             )}
 
-            <Card>
-              <ChartTitle>Agregar pedidos</ChartTitle>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {pedidoRows.map((row, idx) => (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <input style={inputStyle} placeholder="Factura" value={row.fatura} onChange={(e) => updatePedidoRow(idx, "fatura", e.target.value)} />
-                    <input style={inputStyle} placeholder="Pedido" value={row.pedido} onChange={(e) => updatePedidoRow(idx, "pedido", e.target.value)} />
-                    <input style={inputStyle} placeholder="Cliente" value={row.cliente} onChange={(e) => updatePedidoRow(idx, "cliente", e.target.value)} />
-                    <input type="number" style={inputStyle} placeholder="Valor factura (₲)" value={row.valorFatura} onChange={(e) => updatePedidoRow(idx, "valorFatura", e.target.value)} />
-                    <select style={inputStyle} value={row.tipoFlete} onChange={(e) => updatePedidoRow(idx, "tipoFlete", e.target.value)}>
-                      <option value="">Tipo de flete</option>
-                      {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <select style={inputStyle} value={row.estado || "Sin estado"} onChange={(e) => updatePedidoRow(idx, "estado", e.target.value)}>
-                      {ESTADOS_PEDIDO.map((e) => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                    {pedidoRows.length > 1 && (
-                      <button type="button" onClick={() => removePedidoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
-                        <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
-                      </button>
-                    )}
-                  </div>
-                ))}
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 0" }}>
+                <div>
+                  <ChartTitle>Agregar pedidos</ChartTitle>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: -8, marginBottom: 10 }}>Completá una línea por pedido o pegá los datos desde Excel.</div>
+                </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <Button variant="ghost" onClick={addPedidoRow}><Plus size={13} /> Otra factura</Button>
+                  <Button variant="ghost" onClick={() => pegarDesdeExcel(setPedidoRows, ["fatura", "pedido", "cliente", "tipoFlete", "valorFatura", "estado"], emptyPedidoRow)}><ClipboardPaste size={13} /> Pegar del Excel</Button>
+                  <Button variant="ghost" onClick={addPedidoRow}><Plus size={13} /> Agregar línea</Button>
+                </div>
+              </div>
+              <div style={{ overflowX: "auto", padding: "10px 16px 16px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto factura", "Estado", ""].map((h) => (
+                        <th key={h} style={{ background: C.text, color: "#fff", textAlign: "left", padding: "9px 10px", fontSize: 11.5, fontWeight: 700 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidoRows.map((row, idx) => (
+                      <tr key={idx} style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <td style={{ padding: 6 }}><input style={inputStyle} value={row.fatura} onChange={(e) => updatePedidoRow(idx, "fatura", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}><input style={inputStyle} value={row.pedido} onChange={(e) => updatePedidoRow(idx, "pedido", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}><input style={inputStyle} value={row.cliente} onChange={(e) => updatePedidoRow(idx, "cliente", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}>
+                          <select style={inputStyle} value={row.tipoFlete} onChange={(e) => updatePedidoRow(idx, "tipoFlete", e.target.value)}>
+                            <option value="">Seleccione...</option>
+                            {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: 6 }}><input type="number" style={inputStyle} value={row.valorFatura} onChange={(e) => updatePedidoRow(idx, "valorFatura", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}>
+                          <select style={inputStyle} value={row.estado || "Pendiente"} onChange={(e) => updatePedidoRow(idx, "estado", e.target.value)}>
+                            {ESTADOS_PEDIDO.map((e) => <option key={e} value={e}>{e}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: 6 }}>
+                          {pedidoRows.length > 1 && (
+                            <button type="button" onClick={() => removePedidoRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer" }}>
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <Button onClick={savePedidos}><Check size={13} /> Guardar pedidos</Button>
                 </div>
               </div>
@@ -1629,7 +1839,13 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
 
         {tab === "costos" && (
           <div>
-            <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 12 }}>Costos</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17 }}>Costos</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="ghost" onClick={() => setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }])}><LayoutGrid size={14} /> Varios Costos</Button>
+                <Button onClick={() => setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }])}><Plus size={14} /> Nuevo Costo</Button>
+              </div>
+            </div>
             {custosDoViagem.length > 0 && (
               <Card style={{ padding: 0, marginBottom: 14 }}>
                 <Table
@@ -1641,27 +1857,50 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
                 />
               </Card>
             )}
-            <Card>
-              <ChartTitle>Agregar costos</ChartTitle>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {custoRows.map((row, idx) => (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <select style={inputStyle} value={row.tipo} onChange={(e) => updateCustoRow(idx, "tipo", e.target.value)}>
-                      <option value="">Categoría</option>
-                      {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <input type="number" style={inputStyle} placeholder="Valor (₲)" value={row.valor} onChange={(e) => updateCustoRow(idx, "valor", e.target.value)} />
-                    <input type="date" style={inputStyle} value={row.data} onChange={(e) => updateCustoRow(idx, "data", e.target.value)} />
-                    <input style={inputStyle} placeholder="Observación" value={row.obs} onChange={(e) => updateCustoRow(idx, "obs", e.target.value)} />
-                    {custoRows.length > 1 && (
-                      <button type="button" onClick={() => removeCustoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
-                        <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
-                      </button>
-                    )}
-                  </div>
-                ))}
+            <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 0" }}>
+                <div>
+                  <ChartTitle>Agregar costos</ChartTitle>
+                  <div style={{ fontSize: 11.5, color: C.muted, marginTop: -8, marginBottom: 10 }}>Completá una línea por costo o pegá los datos desde Excel.</div>
+                </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <Button variant="ghost" onClick={addCustoRow}><Plus size={13} /> Otro costo</Button>
+                  <Button variant="ghost" onClick={() => pegarDesdeExcel(setCustoRows, ["tipo", "valor", "data", "obs"], () => ({ tipo: "", valor: "", data: "", obs: "" }))}><ClipboardPaste size={13} /> Pegar del Excel</Button>
+                  <Button variant="ghost" onClick={addCustoRow}><Plus size={13} /> Agregar línea</Button>
+                </div>
+              </div>
+              <div style={{ overflowX: "auto", padding: "10px 16px 16px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["Categoría", "Valor (₲)", "Fecha", "Observación", ""].map((h) => (
+                        <th key={h} style={{ background: C.text, color: "#fff", textAlign: "left", padding: "9px 10px", fontSize: 11.5, fontWeight: 700 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {custoRows.map((row, idx) => (
+                      <tr key={idx} style={{ borderBottom: `1px solid ${C.border}` }}>
+                        <td style={{ padding: 6 }}>
+                          <select style={inputStyle} value={row.tipo} onChange={(e) => updateCustoRow(idx, "tipo", e.target.value)}>
+                            <option value="">Seleccione...</option>
+                            {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: 6 }}><input type="number" style={inputStyle} value={row.valor} onChange={(e) => updateCustoRow(idx, "valor", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}><input type="date" style={inputStyle} value={row.data} onChange={(e) => updateCustoRow(idx, "data", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}><input style={inputStyle} value={row.obs} onChange={(e) => updateCustoRow(idx, "obs", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}>
+                          {custoRows.length > 1 && (
+                            <button type="button" onClick={() => removeCustoRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer" }}>
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <Button onClick={saveCustos}><Check size={13} /> Guardar costos</Button>
                 </div>
               </div>
@@ -1696,7 +1935,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
    PEDIDOS
 --------------------------------------------------------------- */
 function emptyPedidoRow() {
-  return { fatura: "", pedido: "", cliente: "", valorFatura: "", tipoFlete: "", estado: "Sin estado" };
+  return { fatura: "", pedido: "", cliente: "", valorFatura: "", tipoFlete: "", estado: "Pendiente" };
 }
 
 function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarifas }) {
@@ -1709,7 +1948,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
 
   const openNew = () => setForm({ viagemId: "", rows: [emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()], editId: null });
   const openNewUnico = () => setForm({ viagemId: "", rows: [emptyPedidoRow()], editId: null });
-  const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete, estado: p.estado || "Sin estado" }], editId: p.id });
+  const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete, estado: p.estado || "Pendiente" }], editId: p.id });
 
   const updateRow = (idx, field, value) => {
     setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)) });
@@ -1732,7 +1971,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
     setForm(null);
   };
   const remove = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmId(null); };
-  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: x.estado === "Entregado" ? "Sin estado" : "Entregado" } : x)));
+  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: ESTADOS_PEDIDO[(ESTADOS_PEDIDO.indexOf(x.estado || "Pendiente") + 1) % ESTADOS_PEDIDO.length] } : x)));
 
   const sorted = [...pedidos].sort((a, b) => {
     const va = viagemById(a.viagemId)?.data || "";
@@ -1806,7 +2045,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
                     </select>
                   </Field>
                   <Field label="Estado del pedido">
-                    <select style={inputStyle} value={row.estado || "Sin estado"} onChange={(e) => updateRow(idx, "estado", e.target.value)}>
+                    <select style={inputStyle} value={row.estado || "Pendiente"} onChange={(e) => updateRow(idx, "estado", e.target.value)}>
                       {ESTADOS_PEDIDO.map((e) => <option key={e} value={e}>{e}</option>)}
                     </select>
                   </Field>
@@ -1845,7 +2084,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
                 p.fatura || "—", p.pedido || "—", p.cliente || "—",
                 fmtMoney(p.valorFatura), p.tipoFlete || "—",
                 <span style={{ cursor: "pointer" }} onClick={() => toggleEstadoPedido(p)} title="Clic para cambiar el estado">
-                  <EstadoBadge estado={p.estado || "Sin estado"} />
+                  <EstadoBadge estado={p.estado || "Pendiente"} />
                 </span>,
                 <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
                 <RowActions onEdit={() => openEdit(p)} onDelete={() => setConfirmId(p.id)} confirming={confirmId === p.id} onConfirm={() => remove(p.id)} onCancel={() => setConfirmId(null)} />,
@@ -2197,10 +2436,58 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
   const resultadoDelViaje = ingresoDelViaje - costosDelViaje;
   const viagensOrdenadasParaFiltro = [...viagensF].sort((a, b) => (b.numero || 0) - (a.numero || 0));
 
+  const [vista, setVista] = useState(null);
+  const REPORTES_MENU = [
+    { id: "resultado", icon: TrendingUp, title: "Resultado por viaje", desc: "Ingresos, costos, combustible, utilidad y margen." },
+    { id: "rendimiento", icon: Truck, title: "Rendimiento de vehículos", desc: "Viajes, kilómetros, combustible y consumo medio." },
+    { id: "pedidos", icon: Package, title: "Pedidos", desc: "Pedidos entregados, pendientes, rechazados y devueltos." },
+    { id: "costos", icon: DollarSign, title: "Costos operativos", desc: "Gastos agrupados por categoría y viaje." },
+    { id: "abastecimientos", icon: Fuel, title: "Abastecimientos", desc: "Litros, montos, precio medio y ciclos de combustible." },
+    { id: "diagnostico", icon: Check, title: "Diagnóstico", desc: "Verifique las hojas y referencias del sistema." },
+  ];
+
+  const pedidosPorEstado = useMemo(() => {
+    const map = {};
+    ESTADOS_PEDIDO.forEach((e) => { map[e] = 0; });
+    pedidosF.forEach((p) => { const e = p.estado || "Pendiente"; map[e] = (map[e] || 0) + 1; });
+    return map;
+  }, [pedidosF]);
+
+  const precioMedioLitro = totalLitros ? totalCombustivel / totalLitros : null;
+
+  if (!vista) {
+    return (
+      <div>
+        <SectionHeader title="Reportes" subtitle="Seleccione el tipo de informe que desea consultar" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 16 }}>
+          {REPORTES_MENU.map((r) => (
+            <Card
+              key={r.id}
+              style={{ cursor: "pointer" }}
+            >
+              <div onClick={() => setVista(r.id)}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(47,107,47,0.10)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                  <r.icon size={20} color={C.yellow} />
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 4 }}>{r.title}</div>
+                <div style={{ fontSize: 12.5, color: C.muted }}>{r.desc}</div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <SectionHeader title="Reportes" subtitle="Filtre por período y vehículo, y después genere el reporte en PDF"
-        action={<Button onClick={() => window.print()}><Printer size={15} /> Generar PDF / Imprimir</Button>} />
+        action={
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button variant="ghost" onClick={() => setVista(null)}>← Volver</Button>
+            <Button onClick={() => window.print()}><Printer size={15} /> Generar PDF / Imprimir</Button>
+          </div>
+        } />
 
       <Card style={{ marginBottom: 18 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
@@ -2222,20 +2509,22 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
               {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
-          <Field label="Detalle de un viaje específico">
-            <select style={inputStyle} value={viagemFiltro} onChange={(e) => setViagemFiltro(e.target.value)}>
-              <option value="">Ninguno (ver totales generales)</option>
-              {viagensOrdenadasParaFiltro.map((v) => (
-                <option key={v.id} value={v.id}>
-                  N° {v.numero} · {v.data ? v.data.split("-").reverse().join("/") : "—"} · {v.placa}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {vista === "resultado" && (
+            <Field label="Detalle de un viaje específico">
+              <select style={inputStyle} value={viagemFiltro} onChange={(e) => setViagemFiltro(e.target.value)}>
+                <option value="">Ninguno (ver totales generales)</option>
+                {viagensOrdenadasParaFiltro.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    N° {v.numero} · {v.data ? v.data.split("-").reverse().join("/") : "—"} · {v.placa}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
         </div>
       </Card>
 
-      {viagemSeleccionada && (
+      {vista === "resultado" && viagemSeleccionada && (
         <div id="report-print-area">
         <Card style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -2285,88 +2574,158 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
         </div>
       )}
 
-      {!viagemSeleccionada && (
+      {!(vista === "resultado" && viagemSeleccionada) && (
       <div id="report-print-area">
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 20, textTransform: "uppercase" }}>
-            Reporte de flota{placaFiltro ? ` — ${placaFiltro}` : ""}
+            {REPORTES_MENU.find((r) => r.id === vista)?.title}{placaFiltro ? ` — ${placaFiltro}` : ""}
           </div>
           <div style={{ color: C.muted, fontSize: 13 }}>{periodoLabel}</div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
-          <KPI icon={Package} label="Viajes en el período" value={viagensF.length} />
-          <KPI icon={Truck} label="Km rodados" value={totalKmRodados ? `${fmtNum(totalKmRodados)} km` : "—"} />
-          <KPI icon={Receipt} label="Ingreso por fletes" value={fmtMoney(totalIngreso)} />
-          <KPI icon={DollarSign} label="Costos generales" value={fmtMoney(totalCustos)} />
-          <KPI icon={Fuel} label="Combustible" value={fmtMoney(totalCombustivel)} />
-          <KPI icon={DollarSign} label="Total general (costos)" value={fmtMoney(totalGeral)} />
-          <KPI icon={resultado >= 0 ? TrendingUp : TrendingDown} label="Resultado (ingresos − gastos)" value={fmtMoney(resultado)} highlight={resultado >= 0 ? "green" : "red"} />
-          <KPI icon={Gauge} label="Consumo promedio" value={consumoMedio ? `${consumoMedio.toFixed(1)} km/l` : "—"} />
-        </div>
+        {vista === "resultado" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
+              <KPI icon={Package} label="Viajes en el período" value={viagensF.length} />
+              <KPI icon={Receipt} label="Ingreso por fletes" value={fmtMoney(totalIngreso)} />
+              <KPI icon={DollarSign} label="Costos generales" value={fmtMoney(totalCustos)} />
+              <KPI icon={Fuel} label="Combustible" value={fmtMoney(totalCombustivel)} />
+              <KPI icon={DollarSign} label="Total general (costos)" value={fmtMoney(totalGeral)} />
+              <KPI icon={resultado >= 0 ? TrendingUp : TrendingDown} label="Resultado (ingresos − gastos)" value={fmtMoney(resultado)} highlight={resultado >= 0 ? "green" : "red"} />
+            </div>
+            <Card style={{ marginBottom: 16 }}>
+              <ChartTitle>Ingresos por fletes vs. gastos</ChartTitle>
+              <div style={{ height: 220 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[{ name: "Ingresos", value: totalIngreso }, { name: "Gastos", value: totalGeral }]}>
+                    <CartesianGrid stroke={C.border} vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 12 }} />
+                    <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                    <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                      <Cell fill={C.green} />
+                      <Cell fill={C.red} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </>
+        )}
 
-        <Card style={{ marginBottom: 16 }}>
-          <ChartTitle>Ingresos por fletes vs. gastos</ChartTitle>
-          <div style={{ height: 220 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={[{ name: "Ingresos", value: totalIngreso }, { name: "Gastos", value: totalGeral }]}>
-                <CartesianGrid stroke={C.border} vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 12 }} />
-                <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
-                <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  <Cell fill={C.green} />
-                  <Cell fill={C.red} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+        {vista === "rendimiento" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
+              <KPI icon={Package} label="Viajes en el período" value={viagensF.length} />
+              <KPI icon={Truck} label="Km rodados" value={totalKmRodados ? `${fmtNum(totalKmRodados)} km` : "—"} />
+              <KPI icon={Fuel} label="Combustible" value={fmtMoney(totalCombustivel)} />
+              <KPI icon={Gauge} label="Consumo promedio" value={consumoMedio ? `${consumoMedio.toFixed(1)} km/l` : "—"} />
+            </div>
+            <Card style={{ marginBottom: 16, padding: 0 }}>
+              <div style={{ padding: "14px 16px 0" }}><ChartTitle>Km rodados por vehículo</ChartTitle></div>
+              {kmPorVeiculo.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Truck} text="No hay suficientes cargas de combustible con KM para calcular los km rodados." /></div> : (
+                <Table
+                  headers={["Vehículo", "Km rodados"]}
+                  rows={kmPorVeiculo.map(([placa, km]) => [<PlateChip placa={placa} />, `${fmtNum(km)} km`])}
+                />
+              )}
+            </Card>
+            <Card style={{ padding: 0 }}>
+              <div style={{ padding: "14px 16px 0" }}><ChartTitle>Viajes del período</ChartTitle></div>
+              {viagensF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Package} text="No hay viajes en el período seleccionado." /></div> : (
+                <Table
+                  headers={["Fecha", "Vehículo", "Chofer", "Estado"]}
+                  rows={[...viagensF].sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((v) => [
+                    v.data ? v.data.split("-").reverse().join("/") : "—", <PlateChip placa={v.placa} />, v.motorista || "—", <EstadoBadge estado={v.estado || "En curso"} />,
+                  ])}
+                />
+              )}
+            </Card>
+          </>
+        )}
 
-        <Card style={{ marginBottom: 16, padding: 0 }}>
-          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Km rodados por vehículo</ChartTitle></div>
-          {kmPorVeiculo.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Truck} text="No hay suficientes cargas de combustible con KM para calcular los km rodados." /></div> : (
+        {vista === "pedidos" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
+              {ESTADOS_PEDIDO.map((e) => (
+                <KPI key={e} icon={Receipt} label={e} value={pedidosPorEstado[e] || 0} />
+              ))}
+            </div>
+            <Card style={{ padding: 0 }}>
+              <div style={{ padding: "14px 16px 0" }}><ChartTitle>Pedidos del período</ChartTitle></div>
+              {pedidosF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Receipt} text="No hay pedidos en el período seleccionado." /></div> : (
+                <Table
+                  headers={["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto", "Estado"]}
+                  rows={pedidosF.map((p) => [
+                    p.fatura || "—", p.pedido || "—", p.cliente || "—", p.tipoFlete || "—", fmtMoney(p.valorFatura),
+                    <EstadoBadge estado={p.estado || "Pendiente"} />,
+                  ])}
+                />
+              )}
+            </Card>
+          </>
+        )}
+
+        {vista === "costos" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
+              <KPI icon={DollarSign} label="Costos generales" value={fmtMoney(totalCustos)} />
+              <KPI icon={Fuel} label="Combustible" value={fmtMoney(totalCombustivel)} />
+              <KPI icon={DollarSign} label="Total general" value={fmtMoney(totalGeral)} />
+            </div>
+            <Card style={{ padding: 0 }}>
+              <div style={{ padding: "14px 16px 0" }}><ChartTitle>Costos por categoría</ChartTitle></div>
+              {porCategoria.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={DollarSign} text="No hay costos en el período seleccionado." /></div> : (
+                <Table headers={["Categoría", "Total"]} rows={porCategoria.map(([tipo, valor]) => [tipo, fmtMoney(valor)])} />
+              )}
+            </Card>
+          </>
+        )}
+
+        {vista === "abastecimientos" && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
+              <KPI icon={Fuel} label="Litros cargados" value={`${fmtNum(totalLitros)} L`} />
+              <KPI icon={DollarSign} label="Monto total" value={fmtMoney(totalCombustivel)} />
+              <KPI icon={DollarSign} label="Precio medio / litro" value={precioMedioLitro ? fmtMoney(precioMedioLitro) : "—"} />
+              <KPI icon={Gauge} label="Consumo promedio" value={consumoMedio ? `${consumoMedio.toFixed(1)} km/l` : "—"} />
+            </div>
+            <Card style={{ padding: 0 }}>
+              <div style={{ padding: "14px 16px 0" }}><ChartTitle>Cargas de combustible del período</ChartTitle></div>
+              {abastecimentosF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Fuel} text="No hay cargas de combustible en el período seleccionado." /></div> : (
+                <Table
+                  headers={["Fecha", "Vehículo", "Litros", "Valor", "Consumo"]}
+                  rows={comConsumo.sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((a) => [
+                    a.data ? a.data.split("-").reverse().join("/") : "—", <PlateChip placa={a.placa} />, fmtNum(a.litros), fmtMoney(a.valor),
+                    a.consumo ? `${a.consumo.toFixed(1)} km/l` : "—",
+                  ])}
+                />
+              )}
+              <div style={{ padding: 14, fontSize: 12.5, color: C.muted, borderTop: `1px solid ${C.border}` }}>
+                Total: {fmtNum(totalLitros)} L · {fmtMoney(totalCombustivel)}
+              </div>
+            </Card>
+          </>
+        )}
+
+        {vista === "diagnostico" && (
+          <Card style={{ padding: 0 }}>
+            <div style={{ padding: "14px 16px 0" }}><ChartTitle>Referencias del sistema</ChartTitle></div>
             <Table
-              headers={["Vehículo", "Km rodados"]}
-              rows={kmPorVeiculo.map(([placa, km]) => [<PlateChip placa={placa} />, `${fmtNum(km)} km`])}
+              headers={["Hoja / referencia", "Cantidad de registros"]}
+              rows={[
+                ["Vehículos", veiculos.length],
+                ["Viajes", viagens.length],
+                ["Pedidos", pedidos.length],
+                ["Costos", custos.length],
+                ["Abastecimientos", abastecimentos.length],
+                ["Sucursales", (sucursales || []).length],
+                ["Tipos de flete", TIPOS_FRETE.length],
+                ["Tipos de costo", TIPOS_CUSTO.length],
+              ]}
             />
-          )}
-        </Card>
-
-        <Card style={{ marginBottom: 16, padding: 0 }}>
-          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Costos por categoría</ChartTitle></div>
-          {porCategoria.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={DollarSign} text="No hay costos en el período seleccionado." /></div> : (
-            <Table headers={["Categoría", "Total"]} rows={porCategoria.map(([tipo, valor]) => [tipo, fmtMoney(valor)])} />
-          )}
-        </Card>
-
-        <Card style={{ marginBottom: 16, padding: 0 }}>
-          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Viajes del período</ChartTitle></div>
-          {viagensF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Package} text="No hay viajes en el período seleccionado." /></div> : (
-            <Table
-              headers={["Fecha", "Vehículo", "Chofer", "Tipo de flete"]}
-              rows={[...viagensF].sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((v) => [
-                v.data ? v.data.split("-").reverse().join("/") : "—", <PlateChip placa={v.placa} />, v.motorista || "—", v.tipoFrete || "—",
-              ])}
-            />
-          )}
-        </Card>
-
-        <Card style={{ padding: 0 }}>
-          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Cargas de combustible del período</ChartTitle></div>
-          {abastecimentosF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Fuel} text="No hay cargas de combustible en el período seleccionado." /></div> : (
-            <Table
-              headers={["Fecha", "Vehículo", "Litros", "Valor", "Consumo"]}
-              rows={comConsumo.sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((a) => [
-                a.data ? a.data.split("-").reverse().join("/") : "—", <PlateChip placa={a.placa} />, fmtNum(a.litros), fmtMoney(a.valor),
-                a.consumo ? `${a.consumo.toFixed(1)} km/l` : "—",
-              ])}
-            />
-          )}
-          <div style={{ padding: 14, fontSize: 12.5, color: C.muted, borderTop: `1px solid ${C.border}` }}>
-            Total: {fmtNum(totalLitros)} L · {fmtMoney(totalCombustivel)}
-          </div>
-        </Card>
+          </Card>
+        )}
       </div>
       )}
     </div>
