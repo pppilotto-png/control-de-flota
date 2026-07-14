@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import {
   Truck, Users, Wrench, Package, DollarSign, LayoutDashboard, Plus, Trash2, X,
-  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid, ClipboardPaste, LogOut,
+  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid, ClipboardPaste,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------
@@ -31,7 +31,6 @@ const TIPOS_CUSTO = ["Peajes", "Consumición", "Hospedaje", "Estibaje", "Tape", 
 const ESTADOS_VEICULO = ["Activo", "Inactivo", "Taller"];
 const ESTADOS_MOTORISTA = ["Activo", "Inactivo"];
 const ESTADOS_VIAGEM = ["En curso", "Finalizado"];
-const ESTADOS_PEDIDO = ["Pendiente", "Entregado", "Rechazado", "Devuelto"];
 
 /* Tarifa (%) que se aplica al valor de la factura de cada pedido, según su tipo de flete.
    Editable por el usuario en la pantalla de Pedidos; 100% por defecto hasta que se ajuste. */
@@ -90,7 +89,7 @@ const SEED_MANUTENCOES = [
 
 const fmtNum = (n) => (n === null || n === undefined || n === "" ? "—" : Number(n).toLocaleString("es-PY"));
 const fmtMoney = (n) => `₲ ${Math.round(Number(n || 0)).toLocaleString("es-PY")}`;
-const uid = () => Date.now() + Math.random();
+const uid = () => `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 /* Pega texto copiado desde una planilla (columnas separadas por tabulaciones) y arma filas.
    campos: nombres de campo en el mismo orden que las columnas copiadas. */
@@ -250,17 +249,6 @@ function ConfirmRow({ onConfirm, onCancel }) {
 --------------------------------------------------------------- */
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const tieneAuth = typeof window !== "undefined" && !!window.auth;
-  const [sesion, setSesion] = useState(null);
-  const [cargandoSesion, setCargandoSesion] = useState(tieneAuth);
-
-  useEffect(() => {
-    if (!tieneAuth) return;
-    window.auth.getSession().then((s) => { setSesion(s); setCargandoSesion(false); });
-    const unsub = window.auth.onAuthChange((s) => setSesion(s));
-    return () => { if (unsub) unsub(); };
-  }, []);
-
   const [tab, setTab] = useState("dashboard");
   const [veiculos, setVeiculos] = useState([]);
   const [motoristas, setMotoristas] = useState([]);
@@ -334,7 +322,7 @@ export default function App() {
       section: "Operación",
       items: [
         { id: "custos", label: "Costos", icon: DollarSign },
-        { id: "abastecimento", label: "Abastecimientos", icon: Fuel },
+        { id: "abastecimento", label: "Combustible", icon: Fuel },
         { id: "manutencao", label: "Mantenimiento", icon: Wrench },
         { id: "relatorios", label: "Reportes", icon: FileText },
       ],
@@ -347,20 +335,6 @@ export default function App() {
     .filter((a) => a.dias <= 30)
     .sort((a, b) => a.dias - b.dias);
   const hayDinatranVencido = alertasDinatranApp.some((a) => a.dias < 0);
-
-  if (tieneAuth && cargandoSesion) {
-    return (
-      <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>
-        <Loader2 className="spin" size={22} style={{ marginRight: 8 }} />
-        Verificando sesión...
-        <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      </div>
-    );
-  }
-
-  if (tieneAuth && !sesion) {
-    return <Login />;
-  }
 
   if (loading) {
     return (
@@ -450,18 +424,6 @@ export default function App() {
           ))}
         </div>
         <div style={{ padding: 14, borderTop: "1px solid #2A342E" }}>
-          {tieneAuth && (
-            <button
-              onClick={() => window.auth.signOut()}
-              style={{
-                display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: 10,
-                background: "none", border: "1px solid #2A342E", borderRadius: 7, padding: "8px 10px",
-                color: "#9AA69C", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
-              }}
-            >
-              <LogOut size={14} /> Cerrar sesión
-            </button>
-          )}
           <div style={{ fontSize: 10, color: "#6E796F" }}>
             Los datos se guardan automáticamente en esta app.
           </div>
@@ -514,50 +476,6 @@ export default function App() {
 /* ---------------------------------------------------------------
    DASHBOARD
 --------------------------------------------------------------- */
-/* ---------------------------------------------------------------
-   LOGIN
---------------------------------------------------------------- */
-function Login() {
-  const [usuario, setUsuario] = useState("");
-  const [clave, setClave] = useState("");
-  const [error, setError] = useState("");
-  const [cargando, setCargando] = useState(false);
-
-  const entrar = async (e) => {
-    e.preventDefault();
-    setError("");
-    setCargando(true);
-    try {
-      await window.auth.signIn(usuario, clave);
-    } catch (err) {
-      setError("Usuario o contraseña incorrectos.");
-    }
-    setCargando(false);
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg, fontFamily: "Inter, system-ui, sans-serif" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600;700&display=swap');`}</style>
-      <form onSubmit={entrar} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 32, width: 320 }}>
-        <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 20, textTransform: "uppercase", marginBottom: 4, color: C.text }}>
-          Control <span style={{ color: C.yellow }}>de Flota</span>
-        </div>
-        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 20 }}>Ingresá tu usuario y contraseña para continuar.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <Field label="Usuario (email)">
-            <input type="email" style={inputStyle} value={usuario} onChange={(e) => setUsuario(e.target.value)} required autoFocus />
-          </Field>
-          <Field label="Contraseña">
-            <input type="password" style={inputStyle} value={clave} onChange={(e) => setClave(e.target.value)} required />
-          </Field>
-          {error && <div style={{ color: C.red, fontSize: 12.5 }}>{error}</div>}
-          <Button type="submit" style={{ justifyContent: "center", marginTop: 4 }}>{cargando ? "Ingresando..." : "Ingresar"}</Button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
 function Dashboard({ veiculos: veiculosProp, viagens: viagensProp, custos: custosProp, manutencoes, abastecimentos: abastecimentosProp, pedidos: pedidosProp, tarifas, sucursales }) {
   const [filtroPlaca, setFiltroPlaca] = useState("");
   const [filtroMes, setFiltroMes] = useState("");
@@ -1658,7 +1576,6 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
   const custosDoViagem = custos.filter((c) => c.viagemId === viagem.id);
   const abastecimentosDoViagem = (abastecimentos || []).filter((a) => a.viagemId === viagem.id);
   const vehiculo = (veiculos || []).find((x) => x.placa === viagem.placa);
-  const entregados = pedidosDoViagem.filter((p) => p.estado === "Entregado").length;
   const totalPedidos = pedidosDoViagem.reduce((s, p) => s + Number(p.valorFatura || 0), 0);
 
   const updatePedidoRow = (idx, field, value) => setPedidoRows(pedidoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
@@ -1672,7 +1589,6 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
     setPedidoRows([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
   };
   const removePedido = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmPedidoId(null); };
-  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: ESTADOS_PEDIDO[(ESTADOS_PEDIDO.indexOf(x.estado || "Pendiente") + 1) % ESTADOS_PEDIDO.length] } : x)));
 
   const updateCustoRow = (idx, field, value) => setCustoRows(custoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
   const addCustoRow = () => setCustoRows([...custoRows, { tipo: "", valor: "", data: "", obs: "" }]);
@@ -1756,7 +1672,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
               <div>
                 <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17 }}>Pedidos</div>
-                <div style={{ fontSize: 12, color: C.muted }}>{pedidosDoViagem.length} registrados · {entregados} entregados · {fmtMoney(totalPedidos)}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{pedidosDoViagem.length} registrados · {fmtMoney(totalPedidos)}</div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Button variant="ghost" onClick={() => setPedidoRows([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()])}><LayoutGrid size={14} /> Varios Pedidos</Button>
@@ -1767,13 +1683,10 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
             {pedidosDoViagem.length > 0 && (
               <Card style={{ padding: 0, marginBottom: 14 }}>
                 <Table
-                  headers={["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto", "Estado", ""]}
+                  headers={["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto", ""]}
                   rows={pedidosDoViagem.map((p) => [
                     p.fatura || "—", p.pedido || "—", p.cliente || "—", p.tipoFlete || "—",
                     fmtMoney(p.valorFatura),
-                    <span style={{ cursor: "pointer" }} onClick={() => toggleEstadoPedido(p)} title="Clic para cambiar el estado">
-                      <EstadoBadge estado={p.estado || "Pendiente"} />
-                    </span>,
                     <RowActions onEdit={() => {}} onDelete={() => setConfirmPedidoId(p.id)} confirming={confirmPedidoId === p.id} onConfirm={() => removePedido(p.id)} onCancel={() => setConfirmPedidoId(null)} />,
                   ])}
                 />
@@ -1787,7 +1700,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
                   <div style={{ fontSize: 11.5, color: C.muted, marginTop: -8, marginBottom: 10 }}>Completá una línea por pedido o pegá los datos desde Excel.</div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <Button variant="ghost" onClick={() => pegarDesdeExcel(setPedidoRows, ["fatura", "pedido", "cliente", "tipoFlete", "valorFatura", "estado"], emptyPedidoRow)}><ClipboardPaste size={13} /> Pegar del Excel</Button>
+                  <Button variant="ghost" onClick={() => pegarDesdeExcel(setPedidoRows, ["fatura", "pedido", "cliente", "tipoFlete", "valorFatura"], emptyPedidoRow)}><ClipboardPaste size={13} /> Pegar del Excel</Button>
                   <Button variant="ghost" onClick={addPedidoRow}><Plus size={13} /> Agregar línea</Button>
                 </div>
               </div>
@@ -1795,7 +1708,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      {["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto factura", "Estado", ""].map((h) => (
+                      {["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto factura", ""].map((h) => (
                         <th key={h} style={{ background: C.text, color: "#fff", textAlign: "left", padding: "9px 10px", fontSize: 11.5, fontWeight: 700 }}>{h}</th>
                       ))}
                     </tr>
@@ -1813,11 +1726,6 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
                           </select>
                         </td>
                         <td style={{ padding: 6 }}><input type="number" style={inputStyle} value={row.valorFatura} onChange={(e) => updatePedidoRow(idx, "valorFatura", e.target.value)} /></td>
-                        <td style={{ padding: 6 }}>
-                          <select style={inputStyle} value={row.estado || "Pendiente"} onChange={(e) => updatePedidoRow(idx, "estado", e.target.value)}>
-                            {ESTADOS_PEDIDO.map((e) => <option key={e} value={e}>{e}</option>)}
-                          </select>
-                        </td>
                         <td style={{ padding: 6 }}>
                           {pedidoRows.length > 1 && (
                             <button type="button" onClick={() => removePedidoRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer" }}>
@@ -1935,7 +1843,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
    PEDIDOS
 --------------------------------------------------------------- */
 function emptyPedidoRow() {
-  return { fatura: "", pedido: "", cliente: "", valorFatura: "", tipoFlete: "", estado: "Pendiente" };
+  return { fatura: "", pedido: "", cliente: "", valorFatura: "", tipoFlete: "" };
 }
 
 function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarifas }) {
@@ -1948,7 +1856,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
 
   const openNew = () => setForm({ viagemId: "", rows: [emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()], editId: null });
   const openNewUnico = () => setForm({ viagemId: "", rows: [emptyPedidoRow()], editId: null });
-  const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete, estado: p.estado || "Pendiente" }], editId: p.id });
+  const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete }], editId: p.id });
 
   const updateRow = (idx, field, value) => {
     setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)) });
@@ -1971,7 +1879,6 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
     setForm(null);
   };
   const remove = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmId(null); };
-  const toggleEstadoPedido = (p) => setPedidos(pedidos.map((x) => (x.id === p.id ? { ...x, estado: ESTADOS_PEDIDO[(ESTADOS_PEDIDO.indexOf(x.estado || "Pendiente") + 1) % ESTADOS_PEDIDO.length] } : x)));
 
   const sorted = [...pedidos].sort((a, b) => {
     const va = viagemById(a.viagemId)?.data || "";
@@ -2044,11 +1951,6 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
                       {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </Field>
-                  <Field label="Estado del pedido">
-                    <select style={inputStyle} value={row.estado || "Pendiente"} onChange={(e) => updateRow(idx, "estado", e.target.value)}>
-                      {ESTADOS_PEDIDO.map((e) => <option key={e} value={e}>{e}</option>)}
-                    </select>
-                  </Field>
                   {!form.editId && form.rows.length > 1 && (
                     <button type="button" onClick={() => removeRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start" }}>
                       <Trash2 size={16} />
@@ -2072,7 +1974,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
       {sorted.length === 0 ? <EmptyState icon={Receipt} text="No hay pedidos registrados." /> : (
         <Card style={{ padding: 0 }}>
           <Table
-            headers={["Viaje N°", "Fecha", "Vehículo", "Sucursal", "Factura", "Pedido", "Cliente", "Valor factura", "Tipo de flete", "Estado", "Ingreso flete", ""]}
+            headers={["Viaje N°", "Fecha", "Vehículo", "Sucursal", "Factura", "Pedido", "Cliente", "Valor factura", "Tipo de flete", "Ingreso flete", ""]}
             rows={sorted.map((p) => {
               const v = viagemById(p.viagemId);
               const sucursal = v ? veiculos.find((x) => x.placa === v.placa)?.sucursal : null;
@@ -2083,9 +1985,6 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
                 sucursal || "—",
                 p.fatura || "—", p.pedido || "—", p.cliente || "—",
                 fmtMoney(p.valorFatura), p.tipoFlete || "—",
-                <span style={{ cursor: "pointer" }} onClick={() => toggleEstadoPedido(p)} title="Clic para cambiar el estado">
-                  <EstadoBadge estado={p.estado || "Pendiente"} />
-                </span>,
                 <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
                 <RowActions onEdit={() => openEdit(p)} onDelete={() => setConfirmId(p.id)} confirming={confirmId === p.id} onConfirm={() => remove(p.id)} onCancel={() => setConfirmId(null)} />,
               ];
@@ -2390,13 +2289,23 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
     if (dataFim && data > dataFim) return false;
     return true;
   };
-  const placasDaSucursal = sucursalFiltro ? new Set(veiculos.filter((v) => v.sucursal === sucursalFiltro).map((v) => v.placa)) : null;
-  const matchPlaca = (p) => (!placaFiltro || p === placaFiltro) && (!placasDaSucursal || placasDaSucursal.has(p));
+  const sucursalDelVehiculo = (placa) => veiculos.find((v) => v.placa === placa)?.sucursal || "";
+  const sucursalDeViagem = (v) => v.sucursal || sucursalDelVehiculo(v.placa);
+  const sucursalDeRegistro = (r) => {
+    if (r.viagemId) {
+      const v = viagens.find((x) => x.id === r.viagemId);
+      if (v) return sucursalDeViagem(v);
+    }
+    return sucursalDelVehiculo(r.placa);
+  };
+  const matchPlaca = (p) => !placaFiltro || p === placaFiltro;
+  const matchSucursalViagem = (v) => !sucursalFiltro || sucursalDeViagem(v) === sucursalFiltro;
+  const matchSucursalRegistro = (r) => !sucursalFiltro || sucursalDeRegistro(r) === sucursalFiltro;
 
-  const viagensF = viagens.filter((v) => inRange(v.data) && matchPlaca(v.placa));
+  const viagensF = viagens.filter((v) => inRange(v.data) && matchPlaca(v.placa) && matchSucursalViagem(v));
   const viagensFIds = new Set(viagensF.map((v) => v.id));
-  const custosF = custos.filter((c) => inRange(c.data) && matchPlaca(c.placa));
-  const abastecimentosF = abastecimentos.filter((a) => inRange(a.data) && matchPlaca(a.placa));
+  const custosF = custos.filter((c) => inRange(c.data) && matchPlaca(c.placa) && matchSucursalRegistro(c));
+  const abastecimentosF = abastecimentos.filter((a) => inRange(a.data) && matchPlaca(a.placa) && matchSucursalRegistro(a));
   const pedidosF = pedidos.filter((p) => viagensFIds.has(p.viagemId));
 
   const totalCustos = custosF.reduce((s, c) => s + Number(c.valor || 0), 0);
@@ -2406,7 +2315,7 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
   const totalIngreso = pedidosF.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
   const resultado = totalIngreso - totalGeral;
 
-  const comConsumo = withConsumo(abastecimentos).filter((a) => inRange(a.data) && matchPlaca(a.placa));
+  const comConsumo = withConsumo(abastecimentos).filter((a) => inRange(a.data) && matchPlaca(a.placa) && matchSucursalRegistro(a));
   const consumos = comConsumo.filter((a) => a.consumo);
   const consumoMedio = consumos.length ? consumos.reduce((s, a) => s + a.consumo, 0) / consumos.length : null;
 
@@ -2420,8 +2329,11 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
   const porCategoria = useMemo(() => {
     const map = {};
     custosF.forEach((c) => { map[c.tipo] = (map[c.tipo] || 0) + Number(c.valor || 0); });
-    return Object.entries(map);
-  }, [custosF]);
+    const entradas = Object.entries(map);
+    const totalComb = abastecimentosF.reduce((s, a) => s + Number(a.valor || 0), 0);
+    if (totalComb > 0) entradas.push(["Combustible", totalComb]);
+    return entradas;
+  }, [custosF, abastecimentosF]);
 
   const periodoLabel = dataInicio || dataFim
     ? `${dataInicio ? dataInicio.split("-").reverse().join("/") : "inicio"} hasta ${dataFim ? dataFim.split("-").reverse().join("/") : "hoy"}`
@@ -2440,18 +2352,11 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
   const REPORTES_MENU = [
     { id: "resultado", icon: TrendingUp, title: "Resultado por viaje", desc: "Ingresos, costos, combustible, utilidad y margen." },
     { id: "rendimiento", icon: Truck, title: "Rendimiento de vehículos", desc: "Viajes, kilómetros, combustible y consumo medio." },
-    { id: "pedidos", icon: Package, title: "Pedidos", desc: "Pedidos entregados, pendientes, rechazados y devueltos." },
+    { id: "pedidos", icon: Package, title: "Pedidos", desc: "Facturas, clientes, tipo de flete y montos del período." },
     { id: "costos", icon: DollarSign, title: "Costos operativos", desc: "Gastos agrupados por categoría y viaje." },
-    { id: "abastecimientos", icon: Fuel, title: "Abastecimientos", desc: "Litros, montos, precio medio y ciclos de combustible." },
+    { id: "abastecimientos", icon: Fuel, title: "Combustible", desc: "Litros, montos, precio medio y ciclos de combustible." },
     { id: "diagnostico", icon: Check, title: "Diagnóstico", desc: "Verifique las hojas y referencias del sistema." },
   ];
-
-  const pedidosPorEstado = useMemo(() => {
-    const map = {};
-    ESTADOS_PEDIDO.forEach((e) => { map[e] = 0; });
-    pedidosF.forEach((p) => { const e = p.estado || "Pendiente"; map[e] = (map[e] || 0) + 1; });
-    return map;
-  }, [pedidosF]);
 
   const precioMedioLitro = totalLitros ? totalCombustivel / totalLitros : null;
 
@@ -2647,18 +2552,17 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
         {vista === "pedidos" && (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
-              {ESTADOS_PEDIDO.map((e) => (
-                <KPI key={e} icon={Receipt} label={e} value={pedidosPorEstado[e] || 0} />
-              ))}
+              <KPI icon={Receipt} label="Pedidos en el período" value={pedidosF.length} />
+              <KPI icon={DollarSign} label="Valor facturas" value={fmtMoney(pedidosF.reduce((s, p) => s + Number(p.valorFatura || 0), 0))} />
+              <KPI icon={Receipt} label="Ingreso por fletes" value={fmtMoney(totalIngreso)} />
             </div>
             <Card style={{ padding: 0 }}>
               <div style={{ padding: "14px 16px 0" }}><ChartTitle>Pedidos del período</ChartTitle></div>
               {pedidosF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Receipt} text="No hay pedidos en el período seleccionado." /></div> : (
                 <Table
-                  headers={["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto", "Estado"]}
+                  headers={["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto"]}
                   rows={pedidosF.map((p) => [
                     p.fatura || "—", p.pedido || "—", p.cliente || "—", p.tipoFlete || "—", fmtMoney(p.valorFatura),
-                    <EstadoBadge estado={p.estado || "Pendiente"} />,
                   ])}
                 />
               )}
@@ -2718,7 +2622,7 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
                 ["Viajes", viagens.length],
                 ["Pedidos", pedidos.length],
                 ["Costos", custos.length],
-                ["Abastecimientos", abastecimentos.length],
+                ["Combustible", abastecimentos.length],
                 ["Sucursales", (sucursales || []).length],
                 ["Tipos de flete", TIPOS_FRETE.length],
                 ["Tipos de costo", TIPOS_CUSTO.length],
