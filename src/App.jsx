@@ -981,56 +981,84 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
   const sorted = filtrados.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
 
   const [mostrarReporte, setMostrarReporte] = useState(false);
+  const [numeroBusca, setNumeroBusca] = useState("");
+  const [numeroGenerado, setNumeroGenerado] = useState(null);
+
+  const viagemDelReporte = numeroGenerado ? viagens.find((v) => String(v.numero) === String(numeroGenerado)) : null;
+
+  const generarReporte = () => {
+    if (!numeroBusca.trim()) return;
+    setNumeroGenerado(numeroBusca.trim());
+  };
 
   return (
     <div>
       <SectionHeader title="Viajes / Fletes" subtitle={`${viagens.length} registrados`}
         action={
           <div style={{ display: "flex", gap: 8 }}>
-            <Button variant="ghost" onClick={() => setMostrarReporte(!mostrarReporte)}><FileText size={15} /> {mostrarReporte ? "Ocultar reporte" : "Generar reporte"}</Button>
+            <Button variant="ghost" onClick={() => { setMostrarReporte(!mostrarReporte); setNumeroGenerado(null); setNumeroBusca(""); }}>
+              <FileText size={15} /> {mostrarReporte ? "Ocultar reporte" : "Generar reporte"}
+            </Button>
             <Button onClick={openNew}><Plus size={15} /> Nuevo viaje</Button>
           </div>
         } />
 
       {mostrarReporte && (
         <Card style={{ marginBottom: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <ChartTitle>Reporte de viajes (placa, fecha, km, pedidos y costos)</ChartTitle>
-            <Button onClick={() => window.print()}><Printer size={15} /> Imprimir / PDF</Button>
+          <ChartTitle>Reporte de viaje (placa, fecha, km, pedidos y costos)</ChartTitle>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", marginBottom: 16, flexWrap: "wrap" }}>
+            <Field label="N° de viaje">
+              <input
+                type="number" style={{ ...inputStyle, maxWidth: 160 }} placeholder="Ej: 3" value={numeroBusca}
+                onChange={(e) => { setNumeroBusca(e.target.value); setNumeroGenerado(null); }}
+                onKeyDown={(e) => { if (e.key === "Enter") generarReporte(); }}
+              />
+            </Field>
+            <Button onClick={generarReporte}><FileText size={14} /> Generar</Button>
           </div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
-            Se incluyen los {filtrados.length} viajes que coinciden con los filtros de abajo (sucursal, estado, año, mes, búsqueda).
-          </div>
-          <div id="report-print-area">
-            <Table
-              headers={["N°", "Fecha", "Placa", "KM", "Pedidos", "Costos"]}
-              rows={filtrados.map((v) => {
-                const pedidosDoViagem = pedidos.filter((p) => p.viagemId === v.id);
-                const custosDoViagem = custos.filter((c) => c.viagemId === v.id);
-                const km = v.kmInicial && v.kmFinal ? `${fmtNum(Number(v.kmFinal) - Number(v.kmInicial))} km` : "—";
-                return [
-                  v.numero ?? "—",
-                  v.data ? v.data.split("-").reverse().join("/") : "—",
-                  <PlateChip placa={v.placa} />,
-                  km,
-                  pedidosDoViagem.length === 0 ? "—" : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      {pedidosDoViagem.map((p) => (
-                        <span key={p.id} style={{ fontSize: 12 }}>{p.fatura || "s/n"} — {fmtMoney(p.valorFatura)}</span>
-                      ))}
-                    </div>
-                  ),
-                  custosDoViagem.length === 0 ? "—" : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      {custosDoViagem.map((c) => (
-                        <span key={c.id} style={{ fontSize: 12 }}>{c.tipo} — {fmtMoney(c.valor)}</span>
-                      ))}
-                    </div>
-                  ),
-                ];
-              })}
-            />
-          </div>
+
+          {numeroGenerado && !viagemDelReporte && (
+            <EmptyState icon={Package} text={`No se encontró ningún viaje con el N° ${numeroGenerado}.`} />
+          )}
+
+          {viagemDelReporte && (
+            <>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <Button onClick={() => window.print()}><Printer size={15} /> Imprimir / PDF</Button>
+              </div>
+              <div id="report-print-area">
+                <Table
+                  headers={["N°", "Fecha", "Placa", "KM", "Pedidos", "Costos"]}
+                  rows={[(() => {
+                    const v = viagemDelReporte;
+                    const pedidosDoViagem = pedidos.filter((p) => p.viagemId === v.id);
+                    const custosDoViagem = custos.filter((c) => c.viagemId === v.id);
+                    const km = v.kmInicial && v.kmFinal ? `${fmtNum(Number(v.kmFinal) - Number(v.kmInicial))} km` : "—";
+                    return [
+                      v.numero ?? "—",
+                      v.data ? v.data.split("-").reverse().join("/") : "—",
+                      <PlateChip placa={v.placa} />,
+                      km,
+                      pedidosDoViagem.length === 0 ? "—" : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {pedidosDoViagem.map((p) => (
+                            <span key={p.id} style={{ fontSize: 12 }}>{p.fatura || "s/n"} — {fmtMoney(p.valorFatura)}</span>
+                          ))}
+                        </div>
+                      ),
+                      custosDoViagem.length === 0 ? "—" : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {custosDoViagem.map((c) => (
+                            <span key={c.id} style={{ fontSize: 12 }}>{c.tipo} — {fmtMoney(c.valor)}</span>
+                          ))}
+                        </div>
+                      ),
+                    ];
+                  })()]}
+                />
+              </div>
+            </>
+          )}
         </Card>
       )}
 
