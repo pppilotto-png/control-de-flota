@@ -1039,6 +1039,11 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
             const combustibleLitros = abastecimentosDoViagem.reduce((s, a) => s + Number(a.litros || 0), 0);
             const custoTotal = custosDoViagem.reduce((s, c) => s + Number(c.valor || 0), 0) + combustibleValor;
             const lucro = fleteTotal - custoTotal;
+            const margen = fleteTotal > 0 ? (lucro / fleteTotal) * 100 : 0;
+            const DARK = "#1B2420";
+            const finalizado = (v.estado || "En curso") === "Finalizado";
+
+            const filasVacias = Math.max(0, 6 - pedidosDoViagem.length);
 
             return (
               <>
@@ -1046,60 +1051,143 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
                   <Button onClick={() => window.print()}><Printer size={15} /> Imprimir / PDF</Button>
                 </div>
                 <div id="report-print-area">
-                  <Card style={{
-                    marginBottom: 16, textAlign: "center",
-                    background: lucro >= 0 ? "rgba(47,107,47,0.10)" : "rgba(122,15,19,0.10)",
-                    borderColor: lucro >= 0 ? C.green : C.red,
-                  }}>
-                    <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Lucro / Pérdida del viaje</div>
-                    <div style={{ fontSize: 26, fontWeight: 700, color: lucro >= 0 ? C.green : C.red, fontFamily: "'Oswald',sans-serif" }}>{fmtMoney(lucro)}</div>
+
+                  {/* CABEÇALHO + KPIS */}
+                  <Card style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}>
+                    <div style={{ background: DARK, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.yellow, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Truck size={26} color="#fff" />
+                        </div>
+                        <div>
+                          <div style={{ color: "#fff", fontSize: 20, fontWeight: 700, fontFamily: "'Oswald',sans-serif", textTransform: "uppercase", letterSpacing: 1 }}>Reporte del viaje</div>
+                          <div style={{ color: C.yellow, fontSize: 13.5, fontWeight: 700, letterSpacing: 1 }}>VIAJE N° {v.numero}</div>
+                        </div>
+                      </div>
+                      <span style={{
+                        background: finalizado ? C.green : "#5B6660", color: "#fff", padding: "6px 14px", borderRadius: 20,
+                        fontSize: 11.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, textTransform: "uppercase", letterSpacing: 0.5,
+                      }}>
+                        <Check size={13} /> {v.estado || "En curso"}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+                      {[
+                        { icon: DollarSign, label: "Flete total", value: fmtMoney(fleteTotal), color: C.text },
+                        { icon: DollarSign, label: "Costo total", value: fmtMoney(custoTotal), color: C.red },
+                        { icon: lucro >= 0 ? TrendingUp : TrendingDown, label: "Lucro / Pérdida", value: fmtMoney(lucro), color: lucro >= 0 ? C.green : C.red },
+                        { icon: Gauge, label: "Margen de lucro", value: `${margen.toFixed(1)}%`, color: C.yellow },
+                      ].map((k, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px", borderTop: `1px solid ${C.border}` }}>
+                          <div style={{ width: 36, height: 36, borderRadius: "50%", background: DARK, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <k.icon size={16} color="#fff" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 10.5, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{k.label}</div>
+                            <div style={{ fontSize: 17, fontWeight: 700, color: k.color, fontFamily: "'Oswald',sans-serif" }}>{k.value}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </Card>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, alignItems: "start" }}>
-                    <Card style={{ padding: 0 }}>
-                      <Table
-                        headers={["", ""]}
-                        rows={[
-                          ["Estado del viaje", <EstadoBadge estado={v.estado || "En curso"} />],
-                          ["Placa", <PlateChip placa={v.placa} />],
-                          ["Sucursal", v.sucursal || sucursalDelVehiculo(v.placa) || "—"],
-                          ["Chofer", v.motorista || "—"],
-                          ["Fecha salida", v.data ? v.data.split("-").reverse().join("/") : "—"],
-                          ["Fecha llegada", v.dataChegada ? v.dataChegada.split("-").reverse().join("/") : "—"],
-                          ["Flete total", <b style={{ color: C.green }}>{fmtMoney(fleteTotal)}</b>],
-                          ["KM recorrido", km !== null ? `${fmtNum(km)} km` : "—"],
-                          ["Peso vehículo (kg)", vehiculo ? fmtNum(vehiculo.peso) : "—"],
-                        ]}
-                      />
+                    {/* DATOS DEL VIAJE */}
+                    <Card style={{ padding: 0, overflow: "hidden" }}>
+                      <div style={{ background: DARK, color: "#fff", padding: "12px 16px", fontWeight: 700, fontSize: 12.5, textTransform: "uppercase", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 8 }}>
+                        <FileText size={15} /> Datos del viaje
+                      </div>
+                      {[
+                        { icon: Truck, label: "Placa", value: <PlateChip placa={v.placa} /> },
+                        { icon: Users, label: "Chofer", value: v.motorista || "—" },
+                        { icon: FileText, label: "Fecha salida", value: v.data ? v.data.split("-").reverse().join("/") : "—" },
+                        { icon: FileText, label: "Fecha llegada", value: v.dataChegada ? v.dataChegada.split("-").reverse().join("/") : "—" },
+                        { icon: Gauge, label: "KM recorrido", value: km !== null ? `${fmtNum(km)} km` : "—" },
+                        { icon: Package, label: "Peso vehículo (kg)", value: vehiculo ? fmtNum(vehiculo.peso) : "—" },
+                        { icon: Check, label: "Status del viaje", value: <EstadoBadge estado={v.estado || "En curso"} /> },
+                      ].map((r, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", borderTop: `1px solid ${C.border}` }}>
+                          <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, flexShrink: 0 }}>
+                            <r.icon size={13} />
+                          </div>
+                          <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>{r.label}</span>
+                            <span style={{ fontSize: 13.5, fontWeight: 700, color: C.text }}>{r.value}</span>
+                          </div>
+                        </div>
+                      ))}
                     </Card>
 
-                    <Card style={{ padding: 0 }}>
-                      <div style={{ padding: "12px 14px", background: "rgba(122,15,19,0.10)", fontWeight: 700, color: C.red, textTransform: "uppercase", fontSize: 12.5, letterSpacing: 0.5 }}>
-                        Costos
+                    {/* DETALLE DE COSTOS */}
+                    <Card style={{ padding: 0, overflow: "hidden" }}>
+                      <div style={{ background: DARK, color: "#fff", padding: "12px 16px", fontWeight: 700, fontSize: 12.5, textTransform: "uppercase", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 8 }}>
+                        <DollarSign size={15} /> Detalle de costos
                       </div>
-                      <Table
-                        headers={["", ""]}
-                        rows={[
-                          ...TIPOS_CUSTO.map((t) => [t, fmtMoney(custosPorTipo[t] || 0)]),
-                          ["Combustible", combustibleLitros ? `${fmtMoney(combustibleValor)} (${fmtNum(combustibleLitros)} L)` : fmtMoney(combustibleValor)],
-                          [<b>Costo total</b>, <b style={{ color: C.red }}>{fmtMoney(custoTotal)}</b>],
-                        ]}
-                      />
+                      {TIPOS_CUSTO.map((t, i) => (
+                        <div key={t} style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px", borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
+                          <span style={{ color: C.muted }}>{t}</span>
+                          <span style={{ fontWeight: 700 }}>{fmtMoney(custosPorTipo[t] || 0)}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px", borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
+                        <span style={{ color: C.muted }}>Combustible {combustibleLitros ? `(${fmtNum(combustibleLitros)} L)` : ""}</span>
+                        <span style={{ fontWeight: 700 }}>{fmtMoney(combustibleValor)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", background: "rgba(122,15,19,0.08)", borderTop: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.red, fontWeight: 700, textTransform: "uppercase", fontSize: 12 }}>Total</span>
+                        <span style={{ color: C.red, fontWeight: 700, fontSize: 15 }}>{fmtMoney(custoTotal)}</span>
+                      </div>
                     </Card>
                   </div>
 
-                  <ChartTitle>Pedidos del viaje</ChartTitle>
-                  {pedidosDoViagem.length === 0 ? <EmptyState icon={Receipt} text="Este viaje no tiene pedidos cargados." /> : (
-                    <Card style={{ padding: 0 }}>
-                      <Table
-                        headers={["Nombre del cliente", "N° de pedido", "Valor Gs. factura", "Valor flete"]}
-                        rows={pedidosDoViagem.map((p) => [
-                          p.cliente || "—", p.pedido || "—", fmtMoney(p.valorFatura),
-                          <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
-                        ])}
-                      />
-                    </Card>
-                  )}
+                  {/* PEDIDOS */}
+                  <Card style={{ padding: 0, overflow: "hidden" }}>
+                    <div style={{ background: DARK, color: "#fff", padding: "12px 16px", fontWeight: 700, fontSize: 12.5, textTransform: "uppercase", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 8 }}>
+                      <Receipt size={15} /> Pedidos del viaje
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                        <thead>
+                          <tr>
+                            {["N° pedido", "Cliente", "N° factura", "Valor factura", "% flete", "Valor flete"].map((h) => (
+                              <th key={h} style={{ textAlign: "left", padding: "10px 16px", color: C.muted, fontWeight: 700, fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pedidosDoViagem.map((p) => (
+                            <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                              <td style={{ padding: "9px 16px" }}>{p.pedido || "—"}</td>
+                              <td style={{ padding: "9px 16px" }}>{p.cliente || "—"}</td>
+                              <td style={{ padding: "9px 16px" }}>{p.fatura || "—"}</td>
+                              <td style={{ padding: "9px 16px" }}>{fmtMoney(p.valorFatura)}</td>
+                              <td style={{ padding: "9px 16px" }}>{Number((tarifas && tarifas[p.tipoFlete]) ?? 100)}%</td>
+                              <td style={{ padding: "9px 16px", color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</td>
+                            </tr>
+                          ))}
+                          {Array.from({ length: filasVacias }).map((_, i) => (
+                            <tr key={`vacia-${i}`} style={{ borderBottom: `1px solid ${C.border}`, color: C.muted }}>
+                              <td style={{ padding: "9px 16px" }}>—</td>
+                              <td style={{ padding: "9px 16px" }}>—</td>
+                              <td style={{ padding: "9px 16px" }}>—</td>
+                              <td style={{ padding: "9px 16px" }}>—</td>
+                              <td style={{ padding: "9px 16px" }}>—</td>
+                              <td style={{ padding: "9px 16px" }}>—</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: C.bg }}>
+                            <td colSpan={3} style={{ padding: "10px 16px" }} />
+                            <td style={{ padding: "10px 16px", fontWeight: 700, fontSize: 11, textTransform: "uppercase", color: C.muted }}>Total facturas</td>
+                            <td colSpan={1} style={{ padding: "10px 16px", fontWeight: 700 }}>{fmtMoney(facturaTotal)}</td>
+                            <td style={{ padding: "10px 16px", fontWeight: 700, color: C.green }}>{fmtMoney(fleteTotal)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </Card>
                 </div>
               </>
             );
@@ -1278,8 +1366,8 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
 
 /* Panel embebido: pedidos y costos del viaje, editables sin salir de la pantalla de Viajes. */
 function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCustos, tarifas, onClose }) {
-  const [pedidoRows, setPedidoRows] = useState([emptyPedidoRow()]);
-  const [custoRows, setCustoRows] = useState([{ tipo: "", valor: "", data: "", obs: "" }]);
+  const [pedidoRows, setPedidoRows] = useState([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
+  const [custoRows, setCustoRows] = useState([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }]);
   const [confirmPedidoId, setConfirmPedidoId] = useState(null);
   const [confirmCustoId, setConfirmCustoId] = useState(null);
 
@@ -1294,7 +1382,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
     if (validas.length === 0) return;
     const nuevos = validas.map((r) => ({ ...r, viagemId: viagem.id, id: uid() }));
     setPedidos([...pedidos, ...nuevos]);
-    setPedidoRows([emptyPedidoRow()]);
+    setPedidoRows([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
   };
   const removePedido = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmPedidoId(null); };
 
@@ -1306,7 +1394,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
     if (validas.length === 0) return;
     const nuevos = validas.map((r) => ({ ...r, placa: viagem.placa, viagemId: viagem.id, id: uid() }));
     setCustos([...custos, ...nuevos]);
-    setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }]);
+    setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }]);
   };
   const removeCusto = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmCustoId(null); };
 
@@ -1421,7 +1509,7 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
   const viagemLabel = (v) => `N° ${v.numero ?? "—"} · ${v.data ? v.data.split("-").reverse().join("/") : "—"} · ${v.placa}${v.motorista ? " · " + v.motorista : ""}`;
   const viagemById = (id) => viagens.find((v) => v.id === id);
 
-  const openNew = () => setForm({ viagemId: "", rows: [emptyPedidoRow()], editId: null });
+  const openNew = () => setForm({ viagemId: "", rows: [emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()], editId: null });
   const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete }], editId: p.id });
 
   const updateRow = (idx, field, value) => {
@@ -1653,17 +1741,33 @@ function AbastecimentoPage({ abastecimentos, setAbastecimentos, veiculos, viagen
 /* ---------------------------------------------------------------
    COSTOS
 --------------------------------------------------------------- */
+function emptyCustoRow() {
+  return { tipo: "", valor: "", data: "", obs: "" };
+}
+
 function CustosPage({ custos, setCustos, veiculos }) {
   const [form, setForm] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
-  const openNew = () => setForm({ id: null, placa: "", tipo: "", valor: "", data: "", obs: "" });
+  const openNew = () => setForm({ placa: "", rows: [emptyCustoRow(), emptyCustoRow(), emptyCustoRow()], editId: null });
+  const openEdit = (c) => setForm({ placa: c.placa, rows: [{ tipo: c.tipo, valor: c.valor, data: c.data, obs: c.obs }], editId: c.id });
+
+  const updateRow = (idx, field, value) => setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)) });
+  const addRow = () => setForm({ ...form, rows: [...form.rows, emptyCustoRow()] });
+  const removeRow = (idx) => setForm({ ...form, rows: form.rows.length > 1 ? form.rows.filter((_, i) => i !== idx) : form.rows });
 
   const save = (e) => {
     e.preventDefault();
-    if (!form.placa || !form.tipo || !form.valor) return;
-    if (form.id) setCustos(custos.map((c) => (c.id === form.id ? { ...form } : c)));
-    else setCustos([...custos, { ...form, id: uid() }]);
+    if (!form.placa) return;
+    if (form.editId) {
+      const row = form.rows[0];
+      setCustos(custos.map((c) => (c.id === form.editId ? { ...row, placa: form.placa, id: form.editId } : c)));
+    } else {
+      const validas = form.rows.filter((r) => r.tipo && r.valor);
+      if (validas.length === 0) return;
+      const nuevos = validas.map((r) => ({ ...r, placa: form.placa, id: uid() }));
+      setCustos([...custos, ...nuevos]);
+    }
     setForm(null);
   };
   const remove = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmId(null); };
@@ -1676,29 +1780,50 @@ function CustosPage({ custos, setCustos, veiculos }) {
 
       {form && (
         <Card style={{ marginBottom: 18 }}>
-          <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
-            <Field label="Vehículo">
-              <select style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value })} required>
-                <option value="">Seleccione</option>
-                {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
-              </select>
-            </Field>
-            <Field label="Categoría">
-              <select style={inputStyle} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })} required>
-                <option value="">Seleccione</option>
-                {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </Field>
-            <Field label="Valor (₲)">
-              <input type="number" step="0.01" style={inputStyle} value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} required />
-            </Field>
-            <Field label="Fecha">
-              <input type="date" style={inputStyle} value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
-            </Field>
-            <Field label="Observación">
-              <input style={inputStyle} value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} />
-            </Field>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <form onSubmit={save}>
+            <div style={{ marginBottom: 14, maxWidth: 260 }}>
+              <Field label="Vehículo">
+                <select style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value })} required>
+                  <option value="">Seleccione</option>
+                  {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {form.rows.map((row, idx) => (
+                <div key={idx} style={{
+                  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10,
+                  padding: 10, border: `1px solid ${C.border}`, borderRadius: 8, alignItems: "flex-end",
+                }}>
+                  <Field label="Categoría">
+                    <select style={inputStyle} value={row.tipo} onChange={(e) => updateRow(idx, "tipo", e.target.value)}>
+                      <option value="">Seleccione</option>
+                      {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Valor (₲)">
+                    <input type="number" style={inputStyle} value={row.valor} onChange={(e) => updateRow(idx, "valor", e.target.value)} />
+                  </Field>
+                  <Field label="Fecha">
+                    <input type="date" style={inputStyle} value={row.data} onChange={(e) => updateRow(idx, "data", e.target.value)} />
+                  </Field>
+                  <Field label="Observación">
+                    <input style={inputStyle} value={row.obs} onChange={(e) => updateRow(idx, "obs", e.target.value)} />
+                  </Field>
+                  {!form.editId && form.rows.length > 1 && (
+                    <button type="button" onClick={() => removeRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start" }}>
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              {!form.editId && (
+                <Button variant="ghost" type="button" onClick={addRow}><Plus size={14} /> Agregar otro costo</Button>
+              )}
               <Button type="submit"><Check size={14} /> Guardar</Button>
               <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
             </div>
@@ -1713,7 +1838,7 @@ function CustosPage({ custos, setCustos, veiculos }) {
             rows={sorted.map((c) => [
               c.data ? c.data.split("-").reverse().join("/") : "—",
               <PlateChip placa={c.placa} />, c.tipo, fmtMoney(c.valor), c.obs || "—",
-              <RowActions onEdit={() => setForm({ ...c })} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />,
+              <RowActions onEdit={() => openEdit(c)} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />,
             ])}
           />
         </Card>
