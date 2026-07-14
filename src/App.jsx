@@ -980,10 +980,59 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
   const paginaActual = Math.min(pagina, totalPaginas);
   const sorted = filtrados.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
 
+  const [mostrarReporte, setMostrarReporte] = useState(false);
+
   return (
     <div>
       <SectionHeader title="Viajes / Fletes" subtitle={`${viagens.length} registrados`}
-        action={<Button onClick={openNew}><Plus size={15} /> Nuevo viaje</Button>} />
+        action={
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button variant="ghost" onClick={() => setMostrarReporte(!mostrarReporte)}><FileText size={15} /> {mostrarReporte ? "Ocultar reporte" : "Generar reporte"}</Button>
+            <Button onClick={openNew}><Plus size={15} /> Nuevo viaje</Button>
+          </div>
+        } />
+
+      {mostrarReporte && (
+        <Card style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <ChartTitle>Reporte de viajes (placa, fecha, km, pedidos y costos)</ChartTitle>
+            <Button onClick={() => window.print()}><Printer size={15} /> Imprimir / PDF</Button>
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+            Se incluyen los {filtrados.length} viajes que coinciden con los filtros de abajo (sucursal, estado, año, mes, búsqueda).
+          </div>
+          <div id="report-print-area">
+            <Table
+              headers={["N°", "Fecha", "Placa", "KM", "Pedidos", "Costos"]}
+              rows={filtrados.map((v) => {
+                const pedidosDoViagem = pedidos.filter((p) => p.viagemId === v.id);
+                const custosDoViagem = custos.filter((c) => c.viagemId === v.id);
+                const km = v.kmInicial && v.kmFinal ? `${fmtNum(Number(v.kmFinal) - Number(v.kmInicial))} km` : "—";
+                return [
+                  v.numero ?? "—",
+                  v.data ? v.data.split("-").reverse().join("/") : "—",
+                  <PlateChip placa={v.placa} />,
+                  km,
+                  pedidosDoViagem.length === 0 ? "—" : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {pedidosDoViagem.map((p) => (
+                        <span key={p.id} style={{ fontSize: 12 }}>{p.fatura || "s/n"} — {fmtMoney(p.valorFatura)}</span>
+                      ))}
+                    </div>
+                  ),
+                  custosDoViagem.length === 0 ? "—" : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {custosDoViagem.map((c) => (
+                        <span key={c.id} style={{ fontSize: 12 }}>{c.tipo} — {fmtMoney(c.valor)}</span>
+                      ))}
+                    </div>
+                  ),
+                ];
+              })}
+            />
+          </div>
+        </Card>
+      )}
 
       <Card style={{ marginBottom: 18, background: "rgba(47,107,47,0.06)", borderColor: C.yellow }}>
         <div style={{ fontSize: 12.5, color: C.muted }}>
