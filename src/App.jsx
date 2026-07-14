@@ -2262,6 +2262,7 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
   const [sucursalFiltro, setSucursalFiltro] = useState("");
   const [viagemFiltro, setViagemFiltro] = useState("");
   const [mesFiltro, setMesFiltro] = useState("");
+  const [tipoFleteFiltro, setTipoFleteFiltro] = useState("");
 
   const inRange = (data) => {
     if (!data) return true;
@@ -2342,9 +2343,12 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
   const precioMedioLitro = totalLitros ? totalCombustivel / totalLitros : null;
 
   const pedidosTipoFleteF = pedidosF.filter((p) => {
-    if (!mesFiltro) return true;
-    const v = viagens.find((x) => x.id === p.viagemId);
-    return v && v.mes === mesFiltro;
+    if (mesFiltro) {
+      const v = viagens.find((x) => x.id === p.viagemId);
+      if (!v || v.mes !== mesFiltro) return false;
+    }
+    if (tipoFleteFiltro && p.tipoFlete !== tipoFleteFiltro) return false;
+    return true;
   });
   const porTipoFlete = useMemo(() => {
     const map = {};
@@ -2428,12 +2432,20 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
             </Field>
           )}
           {vista === "tipoFlete" && (
-            <Field label="Mes">
-              <select style={inputStyle} value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)}>
-                <option value="">Todos</option>
-                {MESES.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </Field>
+            <>
+              <Field label="Mes">
+                <select style={inputStyle} value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)}>
+                  <option value="">Todos</option>
+                  {MESES.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+              <Field label="Tipo de flete">
+                <select style={inputStyle} value={tipoFleteFiltro} onChange={(e) => setTipoFleteFiltro(e.target.value)}>
+                  <option value="">Todos</option>
+                  {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </Field>
+            </>
           )}
         </div>
       </Card>
