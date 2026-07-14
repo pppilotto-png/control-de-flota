@@ -58,3 +58,27 @@ async function list(prefix = "", shared = false) {
 }
 
 window.storage = { get, set, delete: del, list };
+
+/*
+ * window.auth: login con usuario (email) y contraseña, usando Supabase Auth.
+ * Necesario para que la pantalla de Login de la app funcione.
+ * Creá el usuario en Supabase → Authentication → Users → Add user.
+ */
+window.auth = {
+  async signIn(email, password) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data.session;
+  },
+  async signOut() {
+    await supabase.auth.signOut();
+  },
+  async getSession() {
+    const { data } = await supabase.auth.getSession();
+    return data.session;
+  },
+  onAuthChange(callback) {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => callback(session));
+    return () => listener.subscription.unsubscribe();
+  },
+};
