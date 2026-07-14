@@ -405,6 +405,7 @@ export default function App() {
             motoristas={motoristas} sucursales={sucursales}
             pedidos={pedidos} setPedidos={(d) => persist("pedidos", setPedidos, d)}
             custos={custos} setCustos={(d) => persist("custos", setCustos, d)}
+            abastecimentos={abastecimentos}
             tarifas={tarifas}
           />
         )}
@@ -412,7 +413,7 @@ export default function App() {
           <PedidosPage pedidos={pedidos} setPedidos={(d) => persist("pedidos", setPedidos, d)} viagens={viagens} veiculos={veiculos} tarifas={tarifas} setTarifas={(d) => persist("tarifasFrete", setTarifas, d)} />
         )}
         {tab === "abastecimento" && (
-          <AbastecimentoPage abastecimentos={abastecimentos} setAbastecimentos={(d) => persist("abastecimentos", setAbastecimentos, d)} veiculos={veiculos} />
+          <AbastecimentoPage abastecimentos={abastecimentos} setAbastecimentos={(d) => persist("abastecimentos", setAbastecimentos, d)} veiculos={veiculos} viagens={viagens} />
         )}
         {tab === "custos" && (
           <CustosPage custos={custos} setCustos={(d) => persist("custos", setCustos, d)} veiculos={veiculos} />
@@ -908,7 +909,7 @@ function MotoristasPage({ motoristas, setMotoristas }) {
 /* ---------------------------------------------------------------
    VIAJES
 --------------------------------------------------------------- */
-function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, sucursales, pedidos, setPedidos, custos, setCustos, tarifas }) {
+function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, sucursales, pedidos, setPedidos, custos, setCustos, abastecimentos, tarifas }) {
   const [form, setForm] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -922,7 +923,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
 
   const sucursalDelVehiculo = (placa) => veiculos.find((x) => x.placa === placa)?.sucursal || "";
 
-  const openNew = () => setForm({ id: null, placa: "", motorista: "", data: "", mes: "", estado: "En curso", sucursal: "", kmInicial: "", kmFinal: "" });
+  const openNew = () => setForm({ id: null, placa: "", motorista: "", data: "", dataChegada: "", mes: "", estado: "En curso", sucursal: "", kmInicial: "", kmFinal: "" });
   const openEdit = (v) => setForm({ ...v });
 
   const onPlacaChange = (placa) => {
@@ -1021,44 +1022,88 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
             <EmptyState icon={Package} text={`No se encontró ningún viaje con el N° ${numeroGenerado}.`} />
           )}
 
-          {viagemDelReporte && (
-            <>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-                <Button onClick={() => window.print()}><Printer size={15} /> Imprimir / PDF</Button>
-              </div>
-              <div id="report-print-area">
-                <Table
-                  headers={["N°", "Fecha", "Placa", "KM", "Pedidos", "Costos"]}
-                  rows={[(() => {
-                    const v = viagemDelReporte;
-                    const pedidosDoViagem = pedidos.filter((p) => p.viagemId === v.id);
-                    const custosDoViagem = custos.filter((c) => c.viagemId === v.id);
-                    const km = v.kmInicial && v.kmFinal ? `${fmtNum(Number(v.kmFinal) - Number(v.kmInicial))} km` : "—";
-                    return [
-                      v.numero ?? "—",
-                      v.data ? v.data.split("-").reverse().join("/") : "—",
-                      <PlateChip placa={v.placa} />,
-                      km,
-                      pedidosDoViagem.length === 0 ? "—" : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          {pedidosDoViagem.map((p) => (
-                            <span key={p.id} style={{ fontSize: 12 }}>{p.fatura || "s/n"} — {fmtMoney(p.valorFatura)}</span>
-                          ))}
-                        </div>
-                      ),
-                      custosDoViagem.length === 0 ? "—" : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          {custosDoViagem.map((c) => (
-                            <span key={c.id} style={{ fontSize: 12 }}>{c.tipo} — {fmtMoney(c.valor)}</span>
-                          ))}
-                        </div>
-                      ),
-                    ];
-                  })()]}
-                />
-              </div>
-            </>
-          )}
+          {viagemDelReporte && (() => {
+            const v = viagemDelReporte;
+            const vehiculo = veiculos.find((x) => x.placa === v.placa);
+            const pedidosDoViagem = pedidos.filter((p) => p.viagemId === v.id);
+            const custosDoViagem = custos.filter((c) => c.viagemId === v.id);
+            const abastecimentosDoViagem = (abastecimentos || []).filter((a) => a.viagemId === v.id);
+            const km = v.kmInicial && v.kmFinal ? Number(v.kmFinal) - Number(v.kmInicial) : null;
+            const fleteTotal = pedidosDoViagem.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
+            const facturaTotal = pedidosDoViagem.reduce((s, p) => s + Number(p.valorFatura || 0), 0);
+
+            const custosPorTipo = {};
+            TIPOS_CUSTO.forEach((t) => { custosPorTipo[t] = 0; });
+            custosDoViagem.forEach((c) => { custosPorTipo[c.tipo] = (custosPorTipo[c.tipo] || 0) + Number(c.valor || 0); });
+            const combustibleValor = abastecimentosDoViagem.reduce((s, a) => s + Number(a.valor || 0), 0);
+            const combustibleLitros = abastecimentosDoViagem.reduce((s, a) => s + Number(a.litros || 0), 0);
+            const custoTotal = custosDoViagem.reduce((s, c) => s + Number(c.valor || 0), 0) + combustibleValor;
+            const lucro = fleteTotal - custoTotal;
+
+            return (
+              <>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                  <Button onClick={() => window.print()}><Printer size={15} /> Imprimir / PDF</Button>
+                </div>
+                <div id="report-print-area">
+                  <Card style={{
+                    marginBottom: 16, textAlign: "center",
+                    background: lucro >= 0 ? "rgba(47,107,47,0.10)" : "rgba(122,15,19,0.10)",
+                    borderColor: lucro >= 0 ? C.green : C.red,
+                  }}>
+                    <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Lucro / Pérdida del viaje</div>
+                    <div style={{ fontSize: 26, fontWeight: 700, color: lucro >= 0 ? C.green : C.red, fontFamily: "'Oswald',sans-serif" }}>{fmtMoney(lucro)}</div>
+                  </Card>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16, alignItems: "start" }}>
+                    <Card style={{ padding: 0 }}>
+                      <Table
+                        headers={["", ""]}
+                        rows={[
+                          ["Estado del viaje", <EstadoBadge estado={v.estado || "En curso"} />],
+                          ["Placa", <PlateChip placa={v.placa} />],
+                          ["Sucursal", v.sucursal || sucursalDelVehiculo(v.placa) || "—"],
+                          ["Chofer", v.motorista || "—"],
+                          ["Fecha salida", v.data ? v.data.split("-").reverse().join("/") : "—"],
+                          ["Fecha llegada", v.dataChegada ? v.dataChegada.split("-").reverse().join("/") : "—"],
+                          ["Flete total", <b style={{ color: C.green }}>{fmtMoney(fleteTotal)}</b>],
+                          ["KM recorrido", km !== null ? `${fmtNum(km)} km` : "—"],
+                          ["Peso vehículo (kg)", vehiculo ? fmtNum(vehiculo.peso) : "—"],
+                        ]}
+                      />
+                    </Card>
+
+                    <Card style={{ padding: 0 }}>
+                      <div style={{ padding: "12px 14px", background: "rgba(122,15,19,0.10)", fontWeight: 700, color: C.red, textTransform: "uppercase", fontSize: 12.5, letterSpacing: 0.5 }}>
+                        Costos
+                      </div>
+                      <Table
+                        headers={["", ""]}
+                        rows={[
+                          ...TIPOS_CUSTO.map((t) => [t, fmtMoney(custosPorTipo[t] || 0)]),
+                          ["Combustible", combustibleLitros ? `${fmtMoney(combustibleValor)} (${fmtNum(combustibleLitros)} L)` : fmtMoney(combustibleValor)],
+                          [<b>Costo total</b>, <b style={{ color: C.red }}>{fmtMoney(custoTotal)}</b>],
+                        ]}
+                      />
+                    </Card>
+                  </div>
+
+                  <ChartTitle>Pedidos del viaje</ChartTitle>
+                  {pedidosDoViagem.length === 0 ? <EmptyState icon={Receipt} text="Este viaje no tiene pedidos cargados." /> : (
+                    <Card style={{ padding: 0 }}>
+                      <Table
+                        headers={["Nombre del cliente", "N° de pedido", "Valor Gs. factura", "Valor flete"]}
+                        rows={pedidosDoViagem.map((p) => [
+                          p.cliente || "—", p.pedido || "—", fmtMoney(p.valorFatura),
+                          <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
+                        ])}
+                      />
+                    </Card>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </Card>
       )}
 
@@ -1090,8 +1135,11 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
                 {motoristas.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
               </select>
             </Field>
-            <Field label="Fecha">
+            <Field label="Fecha salida">
               <input type="date" style={inputStyle} value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} required />
+            </Field>
+            <Field label="Fecha llegada">
+              <input type="date" style={inputStyle} value={form.dataChegada || ""} onChange={(e) => setForm({ ...form, dataChegada: e.target.value })} />
             </Field>
             <Field label="Estado del viaje">
               <select style={inputStyle} value={form.estado || "En curso"} onChange={(e) => setForm({ ...form, estado: e.target.value })}>
@@ -1512,11 +1560,11 @@ function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarif
 /* ---------------------------------------------------------------
    ABASTECIMENTO
 --------------------------------------------------------------- */
-function AbastecimentoPage({ abastecimentos, setAbastecimentos, veiculos }) {
+function AbastecimentoPage({ abastecimentos, setAbastecimentos, veiculos, viagens }) {
   const [form, setForm] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
 
-  const openNew = () => setForm({ id: null, placa: "", data: "", km: "", litros: "", valor: "", posto: "" });
+  const openNew = () => setForm({ id: null, placa: "", data: "", km: "", litros: "", valor: "", posto: "", viagemId: "" });
 
   const save = (e) => {
     e.preventDefault();
@@ -1567,6 +1615,14 @@ function AbastecimentoPage({ abastecimentos, setAbastecimentos, veiculos }) {
             </Field>
             <Field label="Estación (opcional)">
               <input style={inputStyle} value={form.posto} onChange={(e) => setForm({ ...form, posto: e.target.value })} />
+            </Field>
+            <Field label="Viaje (opcional)">
+              <select style={inputStyle} value={form.viagemId || ""} onChange={(e) => setForm({ ...form, viagemId: e.target.value })}>
+                <option value="">Ninguno</option>
+                {[...viagens].sort((a, b) => (b.numero || 0) - (a.numero || 0)).map((v) => (
+                  <option key={v.id} value={v.id}>N° {v.numero} · {v.placa}</option>
+                ))}
+              </select>
             </Field>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
               <Button type="submit"><Check size={14} /> Guardar</Button>
