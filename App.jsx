@@ -1,0 +1,1794 @@
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+  LineChart, Line, CartesianGrid, Legend,
+} from "recharts";
+import {
+  Truck, Users, Wrench, Package, DollarSign, LayoutDashboard, Plus, Trash2, X,
+  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2,
+} from "lucide-react";
+
+/* ---------------------------------------------------------------
+   TOKENS
+   bg: asfalto oscuro / accent: colores corporativos SiderAgro S.A
+--------------------------------------------------------------- */
+/* Paleta provisoria clara, inspirada en el rubro de SiderAgro S.A (acero + agro).
+   Reemplazar los acentos por los hexadecimales exactos del logo cuando se confirmen. */
+const C = {
+  bg: "#F5F3EF",
+  surface: "#FFFFFF",
+  raised: "#EAF3EA",
+  border: "#E3DFD8",
+  text: "#22261F",
+  muted: "#6E766E",
+  yellow: "#2F6B2F",   // verde acero (acento primario / alerta próxima)
+  red: "#7A0F13",      // rojo oscuro (alerta vencida / gastos)
+  green: "#4F7942",    // verde agro (acento secundario / ingresos / consumo)
+};
+
+const TIPOS_FRETE = ["Local", "Doble", "Remisión", "Viaje", "Segunda Entrega", "Devolución"];
+const TIPOS_CUSTO = ["Peajes", "Consumición", "Hospedaje", "Estibaje", "Tape", "Repuestos", "Cubierta", "Mano de Obra", "Otros"];
+const ESTADOS_VEICULO = ["Activo", "Inactivo", "Taller"];
+const ESTADOS_MOTORISTA = ["Activo", "Inactivo"];
+const ESTADOS_VIAGEM = ["En curso", "Finalizado"];
+
+/* Tarifa (%) que se aplica al valor de la factura de cada pedido, según su tipo de flete.
+   Editable por el usuario en la pantalla de Pedidos; 100% por defecto hasta que se ajuste. */
+const DEFAULT_TARIFAS = Object.fromEntries(TIPOS_FRETE.map((t) => [t, 100]));
+
+/* Ingreso de flete generado por un pedido: valor de la factura × tarifa del tipo de flete. */
+function freightRevenue(pedido, tarifas) {
+  const pct = Number((tarifas && tarifas[pedido.tipoFlete]) ?? 100);
+  return Number(pedido.valorFatura || 0) * (pct / 100);
+}
+
+/* Combina abastecimentos por veículo (ordenados por KM) para calcular
+   km rodado, consumo (km/l) e custo por km entre um abastecimento e o anterior. */
+function withConsumo(abastecimentos) {
+  const byPlaca = {};
+  abastecimentos.forEach((a) => { (byPlaca[a.placa] = byPlaca[a.placa] || []).push(a); });
+  const result = [];
+  Object.values(byPlaca).forEach((list) => {
+    const sorted = [...list].sort((a, b) => Number(a.km || 0) - Number(b.km || 0));
+    sorted.forEach((a, i) => {
+      const prev = sorted[i - 1];
+      const kmRodado = prev && a.km && prev.km ? Number(a.km) - Number(prev.km) : null;
+      const consumo = kmRodado && a.litros ? kmRodado / Number(a.litros) : null;
+      const custoPorKm = kmRodado && a.valor ? Number(a.valor) / kmRodado : null;
+      result.push({ ...a, kmRodado, consumo, custoPorKm });
+    });
+  });
+  return result;
+}
+const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+const SEED_VEICULOS = [
+  { id: 1, placa: "AAOP217", peso: 32000, motorista: "Jorge Baez", kmAtual: 1847680, dinatran: "2027-01-30" },
+  { id: 2, placa: "AAUC019", peso: 5000, motorista: "Juan Lopez", kmAtual: 29361, dinatran: "2027-03-17" },
+  { id: 3, placa: "AASN159", peso: 5000, motorista: "Carlos Lencina", kmAtual: 33696, dinatran: "2026-11-04" },
+  { id: 4, placa: "CEU654", peso: 12000, motorista: "Sabino Escobar", kmAtual: 714808, dinatran: "2027-07-03" },
+  { id: 5, placa: "AAFS891", peso: 16500, motorista: "Outro", kmAtual: 280060, dinatran: "" },
+  { id: 6, placa: "ABAD112", peso: 5000, motorista: "Victor Amarilla", kmAtual: 2031, dinatran: "2027-05-22" },
+  { id: 7, placa: "ABAD083", peso: 5000, motorista: "Alejandro Armoa", kmAtual: 2049, dinatran: "2027-05-22" },
+  { id: 8, placa: "CEN667", peso: null, motorista: null, kmAtual: null, dinatran: "" },
+  { id: 9, placa: "AAOP218", peso: null, motorista: null, kmAtual: null, dinatran: "" },
+];
+
+const SEED_MOTORISTAS = ["Jorge Baez", "Juan Lopez", "Carlos Lencina", "Sabino Escobar", "Victor Amarilla", "Alejandro Armoa"]
+  .map((nome, i) => ({ id: i + 1, nome, telefone: "" }));
+
+const SEED_MANUTENCOES = [
+  { id: 1, placa: "AAOP217", data: "2026-03-20", kmUltima: 1839567, kmProxima: 1849567 },
+  { id: 2, placa: "AAUC019", data: "2026-07-07", kmUltima: 29680, kmProxima: 35000 },
+  { id: 3, placa: "AASN159", data: "2026-05-05", kmUltima: 30187, kmProxima: 35187 },
+  { id: 4, placa: "CEU654", data: "2026-01-06", kmUltima: 709121, kmProxima: 717121 },
+  { id: 5, placa: "AAFS891", data: "", kmUltima: 274683, kmProxima: 284683 },
+  { id: 6, placa: "ABAD112", data: "", kmUltima: null, kmProxima: 5000 },
+  { id: 7, placa: "ABAD083", data: "", kmUltima: null, kmProxima: 5000 },
+];
+
+const fmtNum = (n) => (n === null || n === undefined || n === "" ? "—" : Number(n).toLocaleString("es-PY"));
+const fmtMoney = (n) => `₲ ${Math.round(Number(n || 0)).toLocaleString("es-PY")}`;
+const uid = () => Date.now() + Math.random();
+
+/* Días que faltan para una fecha de vencimiento (negativo si ya venció). */
+function diasParaVencer(dataStr) {
+  if (!dataStr) return null;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const venc = new Date(dataStr + "T00:00:00");
+  return Math.round((venc - hoje) / 86400000);
+}
+
+/* ---------------------------------------------------------------
+   STORAGE
+--------------------------------------------------------------- */
+async function loadKey(key, seed) {
+  try {
+    const res = await window.storage.get(key);
+    return res ? JSON.parse(res.value) : seed;
+  } catch (e) {
+    try { await window.storage.set(key, JSON.stringify(seed)); } catch (_) {}
+    return seed;
+  }
+}
+async function saveKey(key, data) {
+  try {
+    await window.storage.set(key, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    console.error("Error al guardar", key, e);
+    return false;
+  }
+}
+
+/* ---------------------------------------------------------------
+   ATOMS
+--------------------------------------------------------------- */
+function EstadoBadge({ estado }) {
+  const color = estado === "Activo" || estado === "Finalizado" ? C.green : estado === "Taller" ? C.red : C.muted;
+  const bg = estado === "Activo" || estado === "Finalizado" ? "rgba(79,121,66,0.12)" : estado === "Taller" ? "rgba(122,15,19,0.10)" : "rgba(110,118,110,0.12)";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20,
+      fontSize: 11.5, fontWeight: 700, color, background: bg,
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+      {estado || "—"}
+    </span>
+  );
+}
+
+function PlateChip({ placa }) {
+  return (
+    <span style={{
+      display: "inline-flex", flexDirection: "column", alignItems: "center",
+      border: `1.5px solid ${C.yellow}`, borderRadius: 6, overflow: "hidden",
+      fontFamily: "ui-monospace, 'JetBrains Mono', monospace", fontWeight: 700,
+      background: "#FFFFFF", minWidth: 92,
+    }}>
+      <span style={{ background: C.yellow, color: "#FFFFFF", fontSize: 8, letterSpacing: 2, width: "100%", textAlign: "center", padding: "1px 0" }}>PY</span>
+      <span style={{ color: C.text, fontSize: 13, padding: "2px 8px", letterSpacing: 1 }}>{placa || "—"}</span>
+    </span>
+  );
+}
+
+function Card({ children, style }) {
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 18, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function Button({ children, onClick, variant = "primary", type = "button", style }) {
+  const styles = {
+    primary: { background: C.yellow, color: "#FFFFFF", border: "none" },
+    ghost: { background: "transparent", color: C.text, border: `1px solid ${C.border}` },
+    danger: { background: "transparent", color: C.red, border: `1px solid ${C.red}` },
+  };
+  return (
+    <button type={type} onClick={onClick} style={{
+      display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13,
+      padding: "8px 14px", borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+      ...styles[variant], ...style,
+    }}>{children}</button>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 12, color: C.muted, fontWeight: 600 }}>
+      {label}
+      {children}
+    </label>
+  );
+}
+
+const inputStyle = {
+  background: "#FFFFFF", border: `1px solid ${C.border}`, borderRadius: 6,
+  color: C.text, padding: "9px 10px", fontSize: 14, fontFamily: "inherit", outline: "none",
+};
+
+function EmptyState({ icon: Icon, text }) {
+  return (
+    <div style={{ textAlign: "center", padding: "48px 20px", color: C.muted }}>
+      <Icon size={30} style={{ marginBottom: 10, opacity: 0.6 }} />
+      <div style={{ fontSize: 14 }}>{text}</div>
+    </div>
+  );
+}
+
+function SectionHeader({ title, subtitle, action }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
+      <div>
+        <h1 style={{
+          fontFamily: "'Oswald','Arial Narrow',sans-serif", textTransform: "uppercase",
+          letterSpacing: 1.5, fontSize: 26, margin: 0, color: C.text, fontWeight: 700,
+        }}>{title}</h1>
+        {subtitle && <div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{subtitle}</div>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function ConfirmRow({ onConfirm, onCancel }) {
+  return (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: C.muted }}>¿Eliminar?</span>
+      <button onClick={onConfirm} style={{ background: C.red, border: "none", borderRadius: 5, color: "#fff", padding: "4px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Sí</button>
+      <button onClick={onCancel} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 5, color: C.muted, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>No</button>
+    </span>
+  );
+}
+
+/* ---------------------------------------------------------------
+   APP
+--------------------------------------------------------------- */
+export default function App() {
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("dashboard");
+  const [veiculos, setVeiculos] = useState([]);
+  const [motoristas, setMotoristas] = useState([]);
+  const [viagens, setViagens] = useState([]);
+  const [custos, setCustos] = useState([]);
+  const [manutencoes, setManutencoes] = useState([]);
+  const [abastecimentos, setAbastecimentos] = useState([]);
+  const [pedidos, setPedidos] = useState([]);
+  const [tarifas, setTarifas] = useState(DEFAULT_TARIFAS);
+  const [sucursales, setSucursales] = useState(["Casa Matriz"]);
+  const [avisoDinatranOculto, setAvisoDinatranOculto] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const [v, m, vi, c, ma, ab, pe, ta, su] = await Promise.all([
+        loadKey("veiculos", SEED_VEICULOS),
+        loadKey("motoristas", SEED_MOTORISTAS),
+        loadKey("viagens", []),
+        loadKey("custos", []),
+        loadKey("manutencoes", SEED_MANUTENCOES),
+        loadKey("abastecimentos", []),
+        loadKey("pedidos", []),
+        loadKey("tarifasFrete", DEFAULT_TARIFAS),
+        loadKey("sucursales", ["Casa Matriz"]),
+      ]);
+      let viFinal = vi;
+      let maxNum = Math.max(0, ...vi.map((x) => x.numero || 0));
+      if (vi.some((x) => !x.numero)) {
+        viFinal = vi.map((x) => (x.numero ? x : { ...x, numero: ++maxNum }));
+        saveKey("viagens", viFinal);
+      }
+      let vFinal = v;
+      if (v.some((x) => !x.estado)) {
+        vFinal = v.map((x) => (x.estado ? x : { ...x, estado: "Activo" }));
+        saveKey("veiculos", vFinal);
+      }
+      let mFinal = m;
+      if (m.some((x) => !x.estado)) {
+        mFinal = m.map((x) => (x.estado ? x : { ...x, estado: "Activo" }));
+        saveKey("motoristas", mFinal);
+      }
+      setVeiculos(vFinal); setMotoristas(mFinal); setViagens(viFinal); setCustos(c); setManutencoes(ma); setAbastecimentos(ab);
+      setPedidos(pe); setTarifas({ ...DEFAULT_TARIFAS, ...ta });
+      setSucursales(su && su.length ? su : ["Casa Matriz"]);
+      setLoading(false);
+    })();
+  }, []);
+
+  const persist = useCallback((key, setter, data) => {
+    setter(data);
+    saveKey(key, data);
+  }, []);
+
+  const nav = [
+    { id: "dashboard", label: "Panel de Control", icon: LayoutDashboard },
+    { id: "veiculos", label: "Vehículos", icon: Truck },
+    { id: "motoristas", label: "Choferes", icon: Users },
+    { id: "viagens", label: "Viajes / Fletes", icon: Package },
+    { id: "pedidos", label: "Pedidos", icon: Receipt },
+    { id: "abastecimento", label: "Combustible", icon: Fuel },
+    { id: "custos", label: "Costos", icon: DollarSign },
+    { id: "manutencao", label: "Mantenimiento", icon: Wrench },
+    { id: "relatorios", label: "Reportes", icon: FileText },
+  ];
+
+  const alertasDinatranApp = veiculos
+    .filter((v) => v.dinatran)
+    .map((v) => ({ placa: v.placa, dias: diasParaVencer(v.dinatran) }))
+    .filter((a) => a.dias <= 30)
+    .sort((a, b) => a.dias - b.dias);
+  const hayDinatranVencido = alertasDinatranApp.some((a) => a.dias < 0);
+
+  if (loading) {
+    return (
+      <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>
+        <Loader2 className="spin" size={22} style={{ marginRight: 8 }} />
+        Cargando datos...
+        <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "Inter, system-ui, sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; }
+        ::placeholder { color: #A6A198; }
+        select { color-scheme: light; }
+        @media print {
+          body * { visibility: hidden; }
+          #report-print-area, #report-print-area * { visibility: visible; }
+          #report-print-area { position: absolute; left: 0; top: 0; width: 100%; background: #fff !important; color: #111 !important; }
+          #report-print-area * { background: #fff !important; color: #111 !important; border-color: #ccc !important; }
+        }
+      `}</style>
+
+      {alertasDinatranApp.length > 0 && !avisoDinatranOculto && tab !== "veiculos" && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          padding: "10px 20px", background: hayDinatranVencido ? "rgba(122,15,19,0.10)" : "rgba(47,107,47,0.08)",
+          borderBottom: `1px solid ${hayDinatranVencido ? C.red : C.yellow}`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: hayDinatranVencido ? C.red : C.yellow }}>
+            <AlertTriangle size={16} />
+            {alertasDinatranApp.length === 1
+              ? `El Dinatran de ${alertasDinatranApp[0].placa} ${alertasDinatranApp[0].dias < 0 ? "está vencido" : `vence en ${alertasDinatranApp[0].dias} días`}.`
+              : `${alertasDinatranApp.length} vehículos con Dinatran vencido o por vencer dentro de 1 mes.`}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={() => setTab("veiculos")} style={{ background: "none", border: "none", textDecoration: "underline", color: "inherit", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+              Ver vehículos
+            </button>
+            <button onClick={() => setAvisoDinatranOculto(true)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", display: "flex" }}>
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+
+      {/* SIDEBAR */}
+      <div style={{
+        width: 220, flexShrink: 0, background: "#FFFFFF", borderRight: `1px solid ${C.border}`,
+        display: "flex", flexDirection: "column", position: "sticky", top: 0, alignSelf: "flex-start", minHeight: "100vh",
+      }}>
+        <div style={{
+          height: 6, width: "100%",
+          background: `repeating-linear-gradient(45deg, ${C.yellow} 0 10px, #FFFFFF 10px 20px)`,
+        }} />
+        <div style={{ padding: "18px 16px 10px" }}>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 18, letterSpacing: 1, textTransform: "uppercase", color: C.text }}>
+            Control <span style={{ color: C.yellow }}>de Flota</span>
+          </div>
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>Registros y Panel de Control</div>
+        </div>
+        <div style={{ flex: 1, padding: "10px 10px", display: "flex", flexDirection: "column", gap: 3 }}>
+          {nav.map((n) => {
+            const active = tab === n.id;
+            return (
+              <button key={n.id} onClick={() => setTab(n.id)} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 7,
+                border: "none", cursor: "pointer", textAlign: "left", fontSize: 13.5, fontWeight: 600,
+                background: active ? C.raised : "transparent",
+                color: active ? C.yellow : C.muted,
+                borderLeft: active ? `3px solid ${C.yellow}` : "3px solid transparent",
+              }}>
+                <n.icon size={17} />
+                {n.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ padding: 14, fontSize: 10.5, color: C.muted, borderTop: `1px solid ${C.border}` }}>
+          Los datos se guardan automáticamente en esta app.
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div style={{ flex: 1, padding: "28px 34px", minWidth: 0 }}>
+        {tab === "dashboard" && (
+          <Dashboard veiculos={veiculos} viagens={viagens} custos={custos} manutencoes={manutencoes} abastecimentos={abastecimentos} pedidos={pedidos} tarifas={tarifas} />
+        )}
+        {tab === "veiculos" && (
+          <VeiculosPage veiculos={veiculos} setVeiculos={(d) => persist("veiculos", setVeiculos, d)} motoristas={motoristas} sucursales={sucursales} setSucursales={(d) => persist("sucursales", setSucursales, d)} />
+        )}
+        {tab === "motoristas" && (
+          <MotoristasPage motoristas={motoristas} setMotoristas={(d) => persist("motoristas", setMotoristas, d)} />
+        )}
+        {tab === "viagens" && (
+          <ViagensPage
+            viagens={viagens} setViagens={(d) => persist("viagens", setViagens, d)}
+            veiculos={veiculos} motoristas={motoristas} sucursales={sucursales}
+            pedidos={pedidos} setPedidos={(d) => persist("pedidos", setPedidos, d)}
+            custos={custos} setCustos={(d) => persist("custos", setCustos, d)}
+            tarifas={tarifas}
+          />
+        )}
+        {tab === "pedidos" && (
+          <PedidosPage pedidos={pedidos} setPedidos={(d) => persist("pedidos", setPedidos, d)} viagens={viagens} veiculos={veiculos} tarifas={tarifas} setTarifas={(d) => persist("tarifasFrete", setTarifas, d)} />
+        )}
+        {tab === "abastecimento" && (
+          <AbastecimentoPage abastecimentos={abastecimentos} setAbastecimentos={(d) => persist("abastecimentos", setAbastecimentos, d)} veiculos={veiculos} />
+        )}
+        {tab === "custos" && (
+          <CustosPage custos={custos} setCustos={(d) => persist("custos", setCustos, d)} veiculos={veiculos} />
+        )}
+        {tab === "manutencao" && (
+          <ManutencaoPage manutencoes={manutencoes} setManutencoes={(d) => persist("manutencoes", setManutencoes, d)} veiculos={veiculos} setVeiculos={(d) => persist("veiculos", setVeiculos, d)} />
+        )}
+        {tab === "relatorios" && (
+          <RelatoriosPage veiculos={veiculos} viagens={viagens} custos={custos} abastecimentos={abastecimentos} manutencoes={manutencoes} pedidos={pedidos} tarifas={tarifas} sucursales={sucursales} />
+        )}
+      </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   DASHBOARD
+--------------------------------------------------------------- */
+function Dashboard({ veiculos, viagens, custos, manutencoes, abastecimentos, pedidos, tarifas }) {
+  const totalCustosGerais = custos.reduce((s, c) => s + Number(c.valor || 0), 0);
+  const totalCombustivel = abastecimentos.reduce((s, a) => s + Number(a.valor || 0), 0);
+  const totalGasto = totalCustosGerais + totalCombustivel;
+  const totalViagens = viagens.length;
+
+  const totalIngreso = pedidos.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
+  const resultado = totalIngreso - totalGasto;
+  const comparativoIngresoGasto = [
+    { name: "Ingresos", value: totalIngreso },
+    { name: "Gastos", value: totalGasto },
+  ];
+
+  const comConsumo = useMemo(() => withConsumo(abastecimentos), [abastecimentos]);
+
+  const consumoPorVeiculo = useMemo(() => {
+    const map = {};
+    comConsumo.forEach((a) => {
+      if (a.consumo) { if (!map[a.placa]) map[a.placa] = { sum: 0, count: 0 }; map[a.placa].sum += a.consumo; map[a.placa].count++; }
+    });
+    return Object.entries(map).map(([name, v]) => ({ name, value: +(v.sum / v.count).toFixed(1) }));
+  }, [comConsumo]);
+
+  const combustivelPorVeiculo = useMemo(() => {
+    const map = {};
+    abastecimentos.forEach((a) => { map[a.placa] = (map[a.placa] || 0) + Number(a.valor || 0); });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [abastecimentos]);
+
+  const alertas = useMemo(() => {
+    return veiculos.map((v) => {
+      const m = manutencoes.filter((x) => x.placa === v.placa).sort((a, b) => (b.data || "").localeCompare(a.data || ""))[0];
+      if (!m || !m.kmProxima || !v.kmAtual) return null;
+      const falta = m.kmProxima - v.kmAtual;
+      return { placa: v.placa, falta, vencida: falta <= 0 };
+    }).filter(Boolean).sort((a, b) => a.falta - b.falta);
+  }, [veiculos, manutencoes]);
+
+  const vencidas = alertas.filter((a) => a.vencida).length;
+  const proximas = alertas.filter((a) => !a.vencida && a.falta <= 1000).length;
+
+  const alertasDinatran = useMemo(() => {
+    return veiculos
+      .filter((v) => v.dinatran)
+      .map((v) => ({ placa: v.placa, dias: diasParaVencer(v.dinatran) }))
+      .sort((a, b) => a.dias - b.dias);
+  }, [veiculos]);
+  const dinatranVencidos = alertasDinatran.filter((a) => a.dias < 0).length;
+  const dinatranProximos = alertasDinatran.filter((a) => a.dias >= 0 && a.dias <= 30).length;
+
+  const porCategoria = useMemo(() => {
+    const map = {};
+    custos.forEach((c) => { map[c.tipo] = (map[c.tipo] || 0) + Number(c.valor || 0); });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [custos]);
+
+  const porVeiculo = useMemo(() => {
+    const map = {};
+    custos.forEach((c) => { map[c.placa] = (map[c.placa] || 0) + Number(c.valor || 0); });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [custos]);
+
+  const porMes = useMemo(() => {
+    const map = {};
+    viagens.forEach((v) => { map[v.mes] = (map[v.mes] || 0) + 1; });
+    return MESES.filter((m) => map[m]).map((m) => ({ name: m.slice(0, 3), value: map[m] }));
+  }, [viagens]);
+
+  const PIE_COLORS = [C.yellow, C.green, "#3B5B92", "#B98A2E", C.red, "#5C8B72", "#8C6A3F", C.muted, "#A0522D", "#7C6A5C"];
+
+  return (
+    <div>
+      <SectionHeader title="Panel de Control" subtitle="Resumen general de la flota, costos, viajes y mantenimiento" />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 22 }}>
+        <KPI icon={Truck} label="Vehículos registrados" value={veiculos.length} />
+        <KPI icon={Package} label="Viajes registrados" value={totalViagens} />
+        <KPI icon={Receipt} label="Ingreso por fletes" value={fmtMoney(totalIngreso)} />
+        <KPI icon={DollarSign} label="Total general (costos + combustible)" value={fmtMoney(totalGasto)} />
+        <KPI icon={Fuel} label="Gasto en combustible" value={fmtMoney(totalCombustivel)} />
+        <KPI icon={resultado >= 0 ? TrendingUp : TrendingDown} label="Resultado (ingresos − gastos)" value={fmtMoney(resultado)} highlight={resultado >= 0 ? "green" : "red"} />
+        <KPI icon={AlertTriangle} label="Mantenimiento vencido" value={vencidas} highlight={vencidas > 0 ? "red" : null} />
+        <KPI icon={Gauge} label="Mantenimiento próximo (≤1000km)" value={proximas} highlight={proximas > 0 ? "yellow" : null} />
+        <KPI icon={FileText} label="Dinatran vencido" value={dinatranVencidos} highlight={dinatranVencidos > 0 ? "red" : null} />
+        <KPI icon={FileText} label="Dinatran próximo (≤30 días)" value={dinatranProximos} highlight={dinatranProximos > 0 ? "yellow" : null} />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Card>
+          <ChartTitle>Ingresos por fletes vs. gastos</ChartTitle>
+          <div style={{ height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comparativoIngresoGasto}>
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 12 }} />
+                <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  <Cell fill={C.green} />
+                  <Cell fill={C.red} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Card>
+          <ChartTitle>Costos por categoría</ChartTitle>
+          {porCategoria.length === 0 ? <EmptyState icon={DollarSign} text="Todavía no hay costos registrados." /> : (
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={porCategoria} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                    {porCategoria.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: C.muted }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <ChartTitle>Costos por vehículo</ChartTitle>
+          {porVeiculo.length === 0 ? <EmptyState icon={Truck} text="Todavía no hay costos registrados." /> : (
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={porVeiculo}>
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                  <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
+                  <Bar dataKey="value" fill={C.yellow} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <Card>
+          <ChartTitle>Viajes por mes</ChartTitle>
+          {porMes.length === 0 ? <EmptyState icon={Package} text="Todavía no hay viajes registrados." /> : (
+            <div style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={porMes}>
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Line type="monotone" dataKey="value" stroke={C.yellow} strokeWidth={2.5} dot={{ fill: C.yellow }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <ChartTitle>Alertas de mantenimiento</ChartTitle>
+          {alertas.length === 0 ? <EmptyState icon={Wrench} text="Registre el KM actual y el mantenimiento para ver alertas." /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 240, overflowY: "auto" }}>
+              {alertas.map((a) => (
+                <div key={a.placa} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "8px 10px", borderRadius: 7,
+                  background: a.vencida ? "rgba(122,15,19,0.10)" : a.falta <= 1000 ? "rgba(47,107,47,0.08)" : C.bg,
+                  border: `1px solid ${a.vencida ? C.red : a.falta <= 1000 ? C.yellow : C.border}`,
+                }}>
+                  <PlateChip placa={a.placa} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: a.vencida ? C.red : a.falta <= 1000 ? C.yellow : C.muted }}>
+                    {a.vencida ? `Vencido hace ${fmtNum(Math.abs(a.falta))} km` : `Faltan ${fmtNum(a.falta)} km`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
+        <Card>
+          <ChartTitle>Combustible por vehículo (₲)</ChartTitle>
+          {combustivelPorVeiculo.length === 0 ? <EmptyState icon={Fuel} text="Todavía no hay cargas de combustible registradas." /> : (
+            <div style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={combustivelPorVeiculo}>
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                  <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
+                  <Bar dataKey="value" fill={C.red} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <ChartTitle>Consumo promedio por vehículo (km/l)</ChartTitle>
+          {consumoPorVeiculo.length === 0 ? <EmptyState icon={Gauge} text="Registre al menos 2 cargas de combustible por vehículo para calcular el consumo." /> : (
+            <div style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={consumoPorVeiculo}>
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                  <Tooltip formatter={(v) => `${v} km/l`} contentStyle={tooltipStyle} />
+                  <Bar dataKey="value" fill={C.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <Card>
+          <ChartTitle>Alertas de vencimiento Dinatran</ChartTitle>
+          {alertasDinatran.length === 0 ? <EmptyState icon={FileText} text="Cargá la fecha de vencimiento Dinatran de cada vehículo para ver alertas." /> : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 8 }}>
+              {alertasDinatran.map((a) => (
+                <div key={a.placa} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "8px 10px", borderRadius: 7,
+                  background: a.dias < 0 ? "rgba(122,15,19,0.10)" : a.dias <= 30 ? "rgba(47,107,47,0.08)" : C.bg,
+                  border: `1px solid ${a.dias < 0 ? C.red : a.dias <= 30 ? C.yellow : C.border}`,
+                }}>
+                  <PlateChip placa={a.placa} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: a.dias < 0 ? C.red : a.dias <= 30 ? C.yellow : C.muted }}>
+                    {a.dias < 0 ? `Vencido hace ${Math.abs(a.dias)}d` : `Faltan ${a.dias}d`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+const tooltipStyle = { background: C.raised, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, color: C.text };
+
+function ChartTitle({ children }) {
+  return <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>{children}</div>;
+}
+
+function KPI({ icon: Icon, label, value, highlight }) {
+  const color = highlight === "red" ? C.red : highlight === "yellow" ? C.yellow : highlight === "green" ? C.green : C.text;
+  return (
+    <Card style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ background: C.bg, borderRadius: 8, padding: 10, border: `1px solid ${C.border}` }}>
+        <Icon size={19} color={color} />
+      </div>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 700, color, fontFamily: "'Oswald',sans-serif" }}>{value}</div>
+        <div style={{ fontSize: 11.5, color: C.muted }}>{label}</div>
+      </div>
+    </Card>
+  );
+}
+
+/* ---------------------------------------------------------------
+   VEHÍCULOS
+--------------------------------------------------------------- */
+function VeiculosPage({ veiculos, setVeiculos, motoristas, sucursales, setSucursales }) {
+  const [form, setForm] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const [novaSucursal, setNovaSucursal] = useState("");
+  const [filtroSucursal, setFiltroSucursal] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("");
+
+  const openNew = () => setForm({ id: null, placa: "", peso: "", motorista: "", kmAtual: "", sucursal: sucursales[0] || "", estado: "Activo" });
+  const openEdit = (v) => setForm({ ...v });
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.placa) return;
+    if (form.id) {
+      setVeiculos(veiculos.map((v) => (v.id === form.id ? { ...form } : v)));
+    } else {
+      setVeiculos([...veiculos, { ...form, id: uid() }]);
+    }
+    setForm(null);
+  };
+
+  const remove = (id) => { setVeiculos(veiculos.filter((v) => v.id !== id)); setConfirmId(null); };
+
+  const addSucursal = () => {
+    const nome = novaSucursal.trim();
+    if (!nome || sucursales.includes(nome)) return;
+    setSucursales([...sucursales, nome]);
+    setNovaSucursal("");
+  };
+  const removeSucursal = (nome) => {
+    if (veiculos.some((v) => v.sucursal === nome)) return; // no borra si hay vehículos usándola
+    setSucursales(sucursales.filter((s) => s !== nome));
+    if (filtroSucursal === nome) setFiltroSucursal("");
+  };
+
+  const listados = veiculos.filter((v) => (!filtroSucursal || v.sucursal === filtroSucursal) && (!filtroEstado || v.estado === filtroEstado));
+
+  return (
+    <div>
+      <SectionHeader title="Vehículos" subtitle={`${veiculos.length} registrados`}
+        action={<Button onClick={openNew}><Plus size={15} /> Nuevo vehículo</Button>} />
+
+      <Card style={{ marginBottom: 18 }}>
+        <ChartTitle>Sucursales (casa matriz y filiales)</ChartTitle>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+          Creá acá las sucursales de la empresa y asigná cada vehículo a una. Así podés saber qué camiones son de la casa matriz y cuáles de cada filial.
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+          {sucursales.map((s) => (
+            <span key={s} style={{
+              display: "inline-flex", alignItems: "center", gap: 6, background: C.raised,
+              border: `1px solid ${C.border}`, borderRadius: 20, padding: "5px 10px", fontSize: 12.5, fontWeight: 600,
+            }}>
+              <Building2 size={13} /> {s}
+              <button onClick={() => removeSucursal(s)} title="Eliminar sucursal" style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", display: "flex" }}>
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, maxWidth: 340 }}>
+          <input style={inputStyle} placeholder="Nombre de la nueva sucursal" value={novaSucursal} onChange={(e) => setNovaSucursal(e.target.value)} />
+          <Button variant="ghost" onClick={addSucursal}><Plus size={14} /> Agregar</Button>
+        </div>
+      </Card>
+
+      {form && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+            <Field label="Chapa">
+              <input style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value.toUpperCase() })} placeholder="AAOP217" required />
+            </Field>
+            <Field label="Sucursal">
+              <select style={inputStyle} value={form.sucursal || ""} onChange={(e) => setForm({ ...form, sucursal: e.target.value })}>
+                <option value="">Seleccione</option>
+                {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label="Estado">
+              <select style={inputStyle} value={form.estado || "Activo"} onChange={(e) => setForm({ ...form, estado: e.target.value })}>
+                {ESTADOS_VEICULO.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </Field>
+            <Field label="Peso (kg)">
+              <input type="number" style={inputStyle} value={form.peso ?? ""} onChange={(e) => setForm({ ...form, peso: e.target.value })} />
+            </Field>
+            <Field label="Chofer">
+              <select style={inputStyle} value={form.motorista || ""} onChange={(e) => setForm({ ...form, motorista: e.target.value })}>
+                <option value="">Seleccione</option>
+                {motoristas.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+              </select>
+            </Field>
+            <Field label="KM actual">
+              <input type="number" style={inputStyle} value={form.kmAtual ?? ""} onChange={(e) => setForm({ ...form, kmAtual: e.target.value })} />
+            </Field>
+            <Field label="Vencimiento Dinatran">
+              <input type="date" style={inputStyle} value={form.dinatran || ""} onChange={(e) => setForm({ ...form, dinatran: e.target.value })} />
+            </Field>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Button type="submit"><Check size={14} /> Guardar</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {veiculos.length > 0 && (
+        <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,220px))", gap: 12 }}>
+          <Field label="Filtrar por sucursal">
+            <select style={inputStyle} value={filtroSucursal} onChange={(e) => setFiltroSucursal(e.target.value)}>
+              <option value="">Todas</option>
+              {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Filtrar por estado">
+            <select style={inputStyle} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+              <option value="">Todos</option>
+              {ESTADOS_VEICULO.map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </Field>
+        </div>
+      )}
+
+      {listados.length === 0 ? <EmptyState icon={Truck} text="No hay vehículos registrados." /> : (
+        <Card style={{ padding: 0 }}>
+          <Table
+            headers={["Chapa", "Estado", "Sucursal", "Peso (kg)", "Chofer", "KM actual", "Vencimiento Dinatran", ""]}
+            rows={listados.map((v) => {
+              const dias = diasParaVencer(v.dinatran);
+              return [
+                <PlateChip placa={v.placa} />,
+                <EstadoBadge estado={v.estado} />,
+                v.sucursal ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Building2 size={13} color={C.muted} /> {v.sucursal}</span> : "—",
+                fmtNum(v.peso), v.motorista || "—", fmtNum(v.kmAtual),
+                !v.dinatran ? "—" : (
+                  <span style={{ fontWeight: 700, color: dias < 0 ? C.red : dias <= 30 ? C.yellow : C.text }}>
+                    {v.dinatran.split("-").reverse().join("/")}
+                    {dias < 0 ? " (vencido)" : dias <= 30 ? ` (${dias}d)` : ""}
+                  </span>
+                ),
+                <RowActions onEdit={() => openEdit(v)} onDelete={() => setConfirmId(v.id)} confirming={confirmId === v.id} onConfirm={() => remove(v.id)} onCancel={() => setConfirmId(null)} />,
+              ];
+            })}
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   CHOFERES
+--------------------------------------------------------------- */
+function MotoristasPage({ motoristas, setMotoristas }) {
+  const [form, setForm] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.nome) return;
+    if (form.id) setMotoristas(motoristas.map((m) => (m.id === form.id ? { ...form } : m)));
+    else setMotoristas([...motoristas, { ...form, id: uid() }]);
+    setForm(null);
+  };
+  const remove = (id) => { setMotoristas(motoristas.filter((m) => m.id !== id)); setConfirmId(null); };
+
+  return (
+    <div>
+      <SectionHeader title="Choferes" subtitle={`${motoristas.length} registrados`}
+        action={<Button onClick={() => setForm({ id: null, nome: "", telefone: "", estado: "Activo" })}><Plus size={15} /> Nuevo chofer</Button>} />
+
+      {form && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+            <Field label="Nombre"><input style={inputStyle} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></Field>
+            <Field label="Teléfono"><input style={inputStyle} value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></Field>
+            <Field label="Estado">
+              <select style={inputStyle} value={form.estado || "Activo"} onChange={(e) => setForm({ ...form, estado: e.target.value })}>
+                {ESTADOS_MOTORISTA.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </Field>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Button type="submit"><Check size={14} /> Guardar</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {motoristas.length === 0 ? <EmptyState icon={Users} text="No hay choferes registrados." /> : (
+        <Card style={{ padding: 0 }}>
+          <Table
+            headers={["Nombre", "Estado", "Teléfono", ""]}
+            rows={motoristas.map((m) => [
+              m.nome, <EstadoBadge estado={m.estado || "Activo"} />, m.telefone || "—",
+              <RowActions onEdit={() => setForm({ ...m })} onDelete={() => setConfirmId(m.id)} confirming={confirmId === m.id} onConfirm={() => remove(m.id)} onCancel={() => setConfirmId(null)} />,
+            ])}
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   VIAJES
+--------------------------------------------------------------- */
+function ViagensPage({ viagens, setViagens, veiculos, motoristas, sucursales, pedidos, setPedidos, custos, setCustos, tarifas }) {
+  const [form, setForm] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [filtroSucursal, setFiltroSucursal] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("");
+
+  const openNew = () => setForm({ id: null, placa: "", motorista: "", data: "", mes: "", estado: "En curso" });
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.placa || !form.data) return;
+    const mes = MESES[new Date(form.data + "T00:00:00").getMonth()];
+    const record = { ...form, mes };
+    if (form.id) {
+      setViagens(viagens.map((v) => (v.id === form.id ? { ...v, ...record } : v)));
+    } else {
+      const numero = Math.max(0, ...viagens.map((v) => v.numero || 0)) + 1;
+      setViagens([...viagens, { ...record, id: uid(), numero, estado: record.estado || "En curso" }]);
+    }
+    setForm(null);
+  };
+  const remove = (id) => { setViagens(viagens.filter((v) => v.id !== id)); setConfirmId(null); if (expandedId === id) setExpandedId(null); };
+  const toggleEstado = (v) => setViagens(viagens.map((x) => (x.id === v.id ? { ...x, estado: x.estado === "Finalizado" ? "En curso" : "Finalizado" } : x)));
+
+  const statsDaViagem = (viagemId) => {
+    const seus = pedidos.filter((p) => p.viagemId === viagemId);
+    const valorFacturas = seus.reduce((s, p) => s + Number(p.valorFatura || 0), 0);
+    const ingreso = seus.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
+    return { cantidad: seus.length, valorFacturas, ingreso };
+  };
+
+  const cols = ["N°", "Fecha", "Vehículo", "Sucursal", "Chofer", "Estado", "Pedidos", "Valor facturas", "Ingreso flete", ""];
+  const sucursalDelVehiculo = (placa) => veiculos.find((x) => x.placa === placa)?.sucursal || "—";
+
+  const sorted = [...viagens]
+    .filter((v) => !filtroSucursal || sucursalDelVehiculo(v.placa) === filtroSucursal)
+    .filter((v) => !filtroEstado || (v.estado || "En curso") === filtroEstado)
+    .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  return (
+    <div>
+      <SectionHeader title="Viajes / Fletes" subtitle={`${viagens.length} registrados`}
+        action={<Button onClick={openNew}><Plus size={15} /> Nuevo viaje</Button>} />
+
+      <Card style={{ marginBottom: 18, background: "rgba(47,107,47,0.06)", borderColor: C.yellow }}>
+        <div style={{ fontSize: 12.5, color: C.muted }}>
+          Hacé clic en un viaje para cargar sus pedidos y costos ahí mismo, sin cambiar de pantalla.
+        </div>
+      </Card>
+
+      {form && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+            <Field label="Vehículo">
+              <select style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value })} required>
+                <option value="">Seleccione</option>
+                {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+              </select>
+            </Field>
+            <Field label="Chofer">
+              <select style={inputStyle} value={form.motorista} onChange={(e) => setForm({ ...form, motorista: e.target.value })}>
+                <option value="">Seleccione</option>
+                {motoristas.map((m) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+              </select>
+            </Field>
+            <Field label="Fecha">
+              <input type="date" style={inputStyle} value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} required />
+            </Field>
+            <Field label="Estado del viaje">
+              <select style={inputStyle} value={form.estado || "En curso"} onChange={(e) => setForm({ ...form, estado: e.target.value })}>
+                {ESTADOS_VIAGEM.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </Field>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Button type="submit"><Check size={14} /> Guardar</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {viagens.length > 0 && (
+        <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,220px))", gap: 12 }}>
+          <Field label="Filtrar por sucursal">
+            <select style={inputStyle} value={filtroSucursal} onChange={(e) => setFiltroSucursal(e.target.value)}>
+              <option value="">Todas</option>
+              {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Filtrar por estado">
+            <select style={inputStyle} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+              <option value="">Todos</option>
+              {ESTADOS_VIAGEM.map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </Field>
+        </div>
+      )}
+
+      {sorted.length === 0 ? <EmptyState icon={Package} text="No hay viajes registrados." /> : (
+        <Card style={{ padding: 0 }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+              <thead>
+                <tr>
+                  {cols.map((h, i) => (
+                    <th key={i} style={{
+                      textAlign: "left", padding: "12px 14px", color: C.muted, fontWeight: 700,
+                      fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}`,
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((v) => {
+                  const s = statsDaViagem(v.id);
+                  const open = expandedId === v.id;
+                  return (
+                    <React.Fragment key={v.id}>
+                      <tr
+                        onClick={() => setExpandedId(open ? null : v.id)}
+                        style={{ borderBottom: `1px solid ${C.border}`, cursor: "pointer", background: open ? C.raised : "transparent" }}
+                      >
+                        <td style={{ padding: "10px 14px", fontWeight: 700, color: C.muted }}>{v.numero ?? "—"}</td>
+                        <td style={{ padding: "10px 14px" }}>{v.data ? v.data.split("-").reverse().join("/") : "—"}</td>
+                        <td style={{ padding: "10px 14px" }}><PlateChip placa={v.placa} /></td>
+                        <td style={{ padding: "10px 14px", color: C.muted, fontSize: 12.5 }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Building2 size={13} /> {sucursalDelVehiculo(v.placa)}</span>
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>{v.motorista || "—"}</td>
+                        <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
+                          <span style={{ cursor: "pointer" }} onClick={() => toggleEstado(v)} title="Clic para cambiar el estado">
+                            <EstadoBadge estado={v.estado || "En curso"} />
+                          </span>
+                        </td>
+                        <td style={{ padding: "10px 14px" }}>{s.cantidad}</td>
+                        <td style={{ padding: "10px 14px" }}>{fmtMoney(s.valorFacturas)}</td>
+                        <td style={{ padding: "10px 14px", color: C.green, fontWeight: 700 }}>{fmtMoney(s.ingreso)}</td>
+                        <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
+                          <RowActions onEdit={() => setForm({ ...v })} onDelete={() => setConfirmId(v.id)} confirming={confirmId === v.id} onConfirm={() => remove(v.id)} onCancel={() => setConfirmId(null)} />
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr>
+                          <td colSpan={cols.length} style={{ padding: 0, borderBottom: `1px solid ${C.border}` }}>
+                            <ViagemDetalle
+                              viagem={v}
+                              sucursal={sucursalDelVehiculo(v.placa)}
+                              pedidos={pedidos} setPedidos={setPedidos}
+                              custos={custos} setCustos={setCustos}
+                              tarifas={tarifas}
+                              onClose={() => setExpandedId(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* Panel embebido: pedidos y costos del viaje, editables sin salir de la pantalla de Viajes. */
+function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCustos, tarifas, onClose }) {
+  const [pedidoRows, setPedidoRows] = useState([emptyPedidoRow()]);
+  const [custoRows, setCustoRows] = useState([{ tipo: "", valor: "", data: "", obs: "" }]);
+  const [confirmPedidoId, setConfirmPedidoId] = useState(null);
+  const [confirmCustoId, setConfirmCustoId] = useState(null);
+
+  const pedidosDoViagem = pedidos.filter((p) => p.viagemId === viagem.id);
+  const custosDoViagem = custos.filter((c) => c.viagemId === viagem.id);
+
+  const updatePedidoRow = (idx, field, value) => setPedidoRows(pedidoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+  const addPedidoRow = () => setPedidoRows([...pedidoRows, emptyPedidoRow()]);
+  const removePedidoRow = (idx) => setPedidoRows(pedidoRows.length > 1 ? pedidoRows.filter((_, i) => i !== idx) : pedidoRows);
+  const savePedidos = () => {
+    const validas = pedidoRows.filter((r) => r.valorFatura && r.tipoFlete);
+    if (validas.length === 0) return;
+    const nuevos = validas.map((r) => ({ ...r, viagemId: viagem.id, id: uid() }));
+    setPedidos([...pedidos, ...nuevos]);
+    setPedidoRows([emptyPedidoRow()]);
+  };
+  const removePedido = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmPedidoId(null); };
+
+  const updateCustoRow = (idx, field, value) => setCustoRows(custoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+  const addCustoRow = () => setCustoRows([...custoRows, { tipo: "", valor: "", data: "", obs: "" }]);
+  const removeCustoRow = (idx) => setCustoRows(custoRows.length > 1 ? custoRows.filter((_, i) => i !== idx) : custoRows);
+  const saveCustos = () => {
+    const validas = custoRows.filter((r) => r.tipo && r.valor);
+    if (validas.length === 0) return;
+    const nuevos = validas.map((r) => ({ ...r, placa: viagem.placa, viagemId: viagem.id, id: uid() }));
+    setCustos([...custos, ...nuevos]);
+    setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }]);
+  };
+  const removeCusto = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmCustoId(null); };
+
+  return (
+    <div style={{ background: C.bg, padding: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: C.text }}>
+          Viaje N° {viagem.numero} · <PlateChip placa={viagem.placa} /> · <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: C.muted, fontWeight: 600 }}><Building2 size={13} /> {sucursal || "—"}</span>
+        </div>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}><X size={16} /></button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "flex-start" }}>
+        {/* PEDIDOS */}
+        <div>
+          <ChartTitle>Pedidos de este viaje</ChartTitle>
+          {pedidosDoViagem.length > 0 && (
+            <Card style={{ padding: 0, marginBottom: 10 }}>
+              <Table
+                headers={["Factura", "Cliente", "Valor", "Tipo", "Ingreso", ""]}
+                rows={pedidosDoViagem.map((p) => [
+                  p.fatura || "—", p.cliente || "—", fmtMoney(p.valorFatura), p.tipoFlete || "—",
+                  <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
+                  <RowActions onEdit={() => {}} onDelete={() => setConfirmPedidoId(p.id)} confirming={confirmPedidoId === p.id} onConfirm={() => removePedido(p.id)} onCancel={() => setConfirmPedidoId(null)} />,
+                ])}
+              />
+            </Card>
+          )}
+          <Card>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pedidoRows.map((row, idx) => (
+                <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <input style={inputStyle} placeholder="Factura" value={row.fatura} onChange={(e) => updatePedidoRow(idx, "fatura", e.target.value)} />
+                  <input style={inputStyle} placeholder="Pedido" value={row.pedido} onChange={(e) => updatePedidoRow(idx, "pedido", e.target.value)} />
+                  <input style={inputStyle} placeholder="Cliente" value={row.cliente} onChange={(e) => updatePedidoRow(idx, "cliente", e.target.value)} />
+                  <input type="number" style={inputStyle} placeholder="Valor factura (₲)" value={row.valorFatura} onChange={(e) => updatePedidoRow(idx, "valorFatura", e.target.value)} />
+                  <select style={{ ...inputStyle, gridColumn: "1 / -1" }} value={row.tipoFlete} onChange={(e) => updatePedidoRow(idx, "tipoFlete", e.target.value)}>
+                    <option value="">Tipo de flete</option>
+                    {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  {pedidoRows.length > 1 && (
+                    <button type="button" onClick={() => removePedidoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
+                      <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="ghost" onClick={addPedidoRow}><Plus size={13} /> Otra factura</Button>
+                <Button onClick={savePedidos}><Check size={13} /> Guardar pedidos</Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* COSTOS */}
+        <div>
+          <ChartTitle>Costos de este viaje</ChartTitle>
+          {custosDoViagem.length > 0 && (
+            <Card style={{ padding: 0, marginBottom: 10 }}>
+              <Table
+                headers={["Categoría", "Valor", "Obs.", ""]}
+                rows={custosDoViagem.map((c) => [
+                  c.tipo, fmtMoney(c.valor), c.obs || "—",
+                  <RowActions onEdit={() => {}} onDelete={() => setConfirmCustoId(c.id)} confirming={confirmCustoId === c.id} onConfirm={() => removeCusto(c.id)} onCancel={() => setConfirmCustoId(null)} />,
+                ])}
+              />
+            </Card>
+          )}
+          <Card>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {custoRows.map((row, idx) => (
+                <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <select style={inputStyle} value={row.tipo} onChange={(e) => updateCustoRow(idx, "tipo", e.target.value)}>
+                    <option value="">Categoría</option>
+                    {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <input type="number" style={inputStyle} placeholder="Valor (₲)" value={row.valor} onChange={(e) => updateCustoRow(idx, "valor", e.target.value)} />
+                  <input type="date" style={inputStyle} value={row.data} onChange={(e) => updateCustoRow(idx, "data", e.target.value)} />
+                  <input style={inputStyle} placeholder="Observación" value={row.obs} onChange={(e) => updateCustoRow(idx, "obs", e.target.value)} />
+                  {custoRows.length > 1 && (
+                    <button type="button" onClick={() => removeCustoRow(idx)} style={{ gridColumn: "1 / -1", background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start", fontSize: 12 }}>
+                      <Trash2 size={13} style={{ verticalAlign: "middle" }} /> Quitar fila
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button variant="ghost" onClick={addCustoRow}><Plus size={13} /> Otro costo</Button>
+                <Button onClick={saveCustos}><Check size={13} /> Guardar costos</Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   PEDIDOS
+--------------------------------------------------------------- */
+function emptyPedidoRow() {
+  return { fatura: "", pedido: "", cliente: "", valorFatura: "", tipoFlete: "" };
+}
+
+function PedidosPage({ pedidos, setPedidos, viagens, veiculos, tarifas, setTarifas }) {
+  const [form, setForm] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+
+  const viagensOrdenadas = [...viagens].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+  const viagemLabel = (v) => `N° ${v.numero ?? "—"} · ${v.data ? v.data.split("-").reverse().join("/") : "—"} · ${v.placa}${v.motorista ? " · " + v.motorista : ""}`;
+  const viagemById = (id) => viagens.find((v) => v.id === id);
+
+  const openNew = () => setForm({ viagemId: "", rows: [emptyPedidoRow()], editId: null });
+  const openEdit = (p) => setForm({ viagemId: p.viagemId, rows: [{ fatura: p.fatura, pedido: p.pedido, cliente: p.cliente, valorFatura: p.valorFatura, tipoFlete: p.tipoFlete }], editId: p.id });
+
+  const updateRow = (idx, field, value) => {
+    setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)) });
+  };
+  const addRow = () => setForm({ ...form, rows: [...form.rows, emptyPedidoRow()] });
+  const removeRow = (idx) => setForm({ ...form, rows: form.rows.length > 1 ? form.rows.filter((_, i) => i !== idx) : form.rows });
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.viagemId) return;
+    if (form.editId) {
+      const row = form.rows[0];
+      setPedidos(pedidos.map((p) => (p.id === form.editId ? { ...row, viagemId: form.viagemId, id: form.editId } : p)));
+    } else {
+      const validas = form.rows.filter((r) => r.valorFatura && r.tipoFlete);
+      if (validas.length === 0) return;
+      const nuevos = validas.map((r) => ({ ...r, viagemId: form.viagemId, id: uid() }));
+      setPedidos([...pedidos, ...nuevos]);
+    }
+    setForm(null);
+  };
+  const remove = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmId(null); };
+
+  const sorted = [...pedidos].sort((a, b) => {
+    const va = viagemById(a.viagemId)?.data || "";
+    const vb = viagemById(b.viagemId)?.data || "";
+    return vb.localeCompare(va);
+  });
+
+  return (
+    <div>
+      <SectionHeader title="Pedidos" subtitle={`${pedidos.length} registrados`}
+        action={<Button onClick={openNew}><Plus size={15} /> Nuevo pedido</Button>} />
+
+      {setTarifas && (
+        <Card style={{ marginBottom: 18 }}>
+          <ChartTitle>Tarifa de flete por tipo (%)</ChartTitle>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+            El ingreso de cada pedido se calcula como: valor de la factura × tarifa del tipo de flete.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
+            {TIPOS_FRETE.map((t) => (
+              <Field key={t} label={t}>
+                <input
+                  type="number" style={inputStyle} value={tarifas?.[t] ?? 100}
+                  onChange={(e) => setTarifas({ ...tarifas, [t]: e.target.value })}
+                />
+              </Field>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {form && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={save}>
+            <div style={{ marginBottom: 14, maxWidth: 340 }}>
+              <Field label="Viaje">
+                <select style={inputStyle} value={form.viagemId} onChange={(e) => setForm({ ...form, viagemId: e.target.value })} required>
+                  <option value="">Seleccione</option>
+                  {viagensOrdenadas.map((v) => <option key={v.id} value={v.id}>{viagemLabel(v)}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {form.rows.map((row, idx) => (
+                <div key={idx} style={{
+                  display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10,
+                  padding: 10, border: `1px solid ${C.border}`, borderRadius: 8, alignItems: "flex-end",
+                }}>
+                  <Field label="Factura">
+                    <input style={inputStyle} value={row.fatura} onChange={(e) => updateRow(idx, "fatura", e.target.value)} />
+                  </Field>
+                  <Field label="Pedido">
+                    <input style={inputStyle} value={row.pedido} onChange={(e) => updateRow(idx, "pedido", e.target.value)} />
+                  </Field>
+                  <Field label="Cliente">
+                    <input style={inputStyle} value={row.cliente} onChange={(e) => updateRow(idx, "cliente", e.target.value)} />
+                  </Field>
+                  <Field label="Valor factura (₲)">
+                    <input type="number" style={inputStyle} value={row.valorFatura} onChange={(e) => updateRow(idx, "valorFatura", e.target.value)} required />
+                  </Field>
+                  <Field label="Tipo de flete">
+                    <select style={inputStyle} value={row.tipoFlete} onChange={(e) => updateRow(idx, "tipoFlete", e.target.value)} required>
+                      <option value="">Seleccione</option>
+                      {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </Field>
+                  {!form.editId && form.rows.length > 1 && (
+                    <button type="button" onClick={() => removeRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start" }}>
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              {!form.editId && (
+                <Button variant="ghost" type="button" onClick={addRow}><Plus size={14} /> Agregar otra factura</Button>
+              )}
+              <Button type="submit"><Check size={14} /> Guardar</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {sorted.length === 0 ? <EmptyState icon={Receipt} text="No hay pedidos registrados." /> : (
+        <Card style={{ padding: 0 }}>
+          <Table
+            headers={["Viaje N°", "Fecha", "Vehículo", "Sucursal", "Factura", "Pedido", "Cliente", "Valor factura", "Tipo de flete", "Ingreso flete", ""]}
+            rows={sorted.map((p) => {
+              const v = viagemById(p.viagemId);
+              const sucursal = v ? veiculos.find((x) => x.placa === v.placa)?.sucursal : null;
+              return [
+                <span style={{ fontWeight: 700, color: C.muted }}>{v?.numero ?? "—"}</span>,
+                v?.data ? v.data.split("-").reverse().join("/") : "—",
+                v ? <PlateChip placa={v.placa} /> : "—",
+                sucursal || "—",
+                p.fatura || "—", p.pedido || "—", p.cliente || "—",
+                fmtMoney(p.valorFatura), p.tipoFlete || "—",
+                <span style={{ color: C.green, fontWeight: 700 }}>{fmtMoney(freightRevenue(p, tarifas))}</span>,
+                <RowActions onEdit={() => openEdit(p)} onDelete={() => setConfirmId(p.id)} confirming={confirmId === p.id} onConfirm={() => remove(p.id)} onCancel={() => setConfirmId(null)} />,
+              ];
+            })}
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   ABASTECIMENTO
+--------------------------------------------------------------- */
+function AbastecimentoPage({ abastecimentos, setAbastecimentos, veiculos }) {
+  const [form, setForm] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+
+  const openNew = () => setForm({ id: null, placa: "", data: "", km: "", litros: "", valor: "", posto: "" });
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.placa || !form.litros || !form.valor) return;
+    if (form.id) setAbastecimentos(abastecimentos.map((a) => (a.id === form.id ? { ...form } : a)));
+    else setAbastecimentos([...abastecimentos, { ...form, id: uid() }]);
+    setForm(null);
+  };
+  const remove = (id) => { setAbastecimentos(abastecimentos.filter((a) => a.id !== id)); setConfirmId(null); };
+
+  const comConsumo = useMemo(() => withConsumo(abastecimentos), [abastecimentos]);
+  const sorted = [...comConsumo].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+  const totalValor = abastecimentos.reduce((s, a) => s + Number(a.valor || 0), 0);
+  const totalLitros = abastecimentos.reduce((s, a) => s + Number(a.litros || 0), 0);
+
+  return (
+    <div>
+      <SectionHeader title="Combustible" subtitle={`${abastecimentos.length} registros · ${fmtNum(totalLitros)} L · ${fmtMoney(totalValor)}`}
+        action={<Button onClick={openNew}><Plus size={15} /> Nueva carga</Button>} />
+
+      <Card style={{ marginBottom: 18, background: "rgba(47,107,47,0.06)", borderColor: C.yellow }}>
+        <div style={{ fontSize: 12.5, color: C.muted }}>
+          Cada carga de combustible queda separada de los viajes — una sola carga puede cubrir varios viajes.
+          El consumo (km/l) se calcula automáticamente en base al KM informado en cada carga del mismo vehículo.
+        </div>
+      </Card>
+
+      {form && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+            <Field label="Vehículo">
+              <select style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value })} required>
+                <option value="">Seleccione</option>
+                {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+              </select>
+            </Field>
+            <Field label="Fecha">
+              <input type="date" style={inputStyle} value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+            </Field>
+            <Field label="KM en la carga">
+              <input type="number" style={inputStyle} value={form.km} onChange={(e) => setForm({ ...form, km: e.target.value })} />
+            </Field>
+            <Field label="Litros">
+              <input type="number" step="0.01" style={inputStyle} value={form.litros} onChange={(e) => setForm({ ...form, litros: e.target.value })} required />
+            </Field>
+            <Field label="Valor total (₲)">
+              <input type="number" step="0.01" style={inputStyle} value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} required />
+            </Field>
+            <Field label="Estación (opcional)">
+              <input style={inputStyle} value={form.posto} onChange={(e) => setForm({ ...form, posto: e.target.value })} />
+            </Field>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Button type="submit"><Check size={14} /> Guardar</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {sorted.length === 0 ? <EmptyState icon={Fuel} text="No hay cargas de combustible registradas." /> : (
+        <Card style={{ padding: 0 }}>
+          <Table
+            headers={["Fecha", "Vehículo", "KM", "Litros", "Valor", "₲/L", "Consumo (km/l)", ""]}
+            rows={sorted.map((a) => [
+              a.data ? a.data.split("-").reverse().join("/") : "—",
+              <PlateChip placa={a.placa} />, fmtNum(a.km), fmtNum(a.litros), fmtMoney(a.valor),
+              a.litros ? fmtMoney(Number(a.valor) / Number(a.litros)) : "—",
+              a.consumo ? `${a.consumo.toFixed(1)} km/l` : "—",
+              <RowActions onEdit={() => setForm({ ...a })} onDelete={() => setConfirmId(a.id)} confirming={confirmId === a.id} onConfirm={() => remove(a.id)} onCancel={() => setConfirmId(null)} />,
+            ])}
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   COSTOS
+--------------------------------------------------------------- */
+function CustosPage({ custos, setCustos, veiculos }) {
+  const [form, setForm] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+
+  const openNew = () => setForm({ id: null, placa: "", tipo: "", valor: "", data: "", obs: "" });
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.placa || !form.tipo || !form.valor) return;
+    if (form.id) setCustos(custos.map((c) => (c.id === form.id ? { ...form } : c)));
+    else setCustos([...custos, { ...form, id: uid() }]);
+    setForm(null);
+  };
+  const remove = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmId(null); };
+  const sorted = [...custos].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  return (
+    <div>
+      <SectionHeader title="Costos" subtitle={`${custos.length} registrados · Total ${fmtMoney(custos.reduce((s, c) => s + Number(c.valor || 0), 0))}`}
+        action={<Button onClick={openNew}><Plus size={15} /> Nuevo costo</Button>} />
+
+      {form && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+            <Field label="Vehículo">
+              <select style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value })} required>
+                <option value="">Seleccione</option>
+                {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+              </select>
+            </Field>
+            <Field label="Categoría">
+              <select style={inputStyle} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })} required>
+                <option value="">Seleccione</option>
+                {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Valor (₲)">
+              <input type="number" step="0.01" style={inputStyle} value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} required />
+            </Field>
+            <Field label="Fecha">
+              <input type="date" style={inputStyle} value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+            </Field>
+            <Field label="Observación">
+              <input style={inputStyle} value={form.obs} onChange={(e) => setForm({ ...form, obs: e.target.value })} />
+            </Field>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Button type="submit"><Check size={14} /> Guardar</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {sorted.length === 0 ? <EmptyState icon={DollarSign} text="No hay costos registrados." /> : (
+        <Card style={{ padding: 0 }}>
+          <Table
+            headers={["Fecha", "Vehículo", "Categoría", "Valor", "Obs.", ""]}
+            rows={sorted.map((c) => [
+              c.data ? c.data.split("-").reverse().join("/") : "—",
+              <PlateChip placa={c.placa} />, c.tipo, fmtMoney(c.valor), c.obs || "—",
+              <RowActions onEdit={() => setForm({ ...c })} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />,
+            ])}
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   MANTENIMIENTO
+--------------------------------------------------------------- */
+function ManutencaoPage({ manutencoes, setManutencoes, veiculos, setVeiculos }) {
+  const [form, setForm] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+
+  const openNew = () => setForm({ id: null, placa: "", data: "", kmUltima: "", kmProxima: "" });
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.placa || !form.kmProxima) return;
+    if (form.id) setManutencoes(manutencoes.map((m) => (m.id === form.id ? { ...form } : m)));
+    else setManutencoes([...manutencoes, { ...form, id: uid() }]);
+    setForm(null);
+  };
+  const remove = (id) => { setManutencoes(manutencoes.filter((m) => m.id !== id)); setConfirmId(null); };
+  const sorted = [...manutencoes].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  return (
+    <div>
+      <SectionHeader title="Mantenimiento" subtitle={`${manutencoes.length} registros`}
+        action={<Button onClick={openNew}><Plus size={15} /> Nuevo mantenimiento</Button>} />
+
+      {form && (
+        <Card style={{ marginBottom: 18 }}>
+          <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+            <Field label="Vehículo">
+              <select style={inputStyle} value={form.placa} onChange={(e) => setForm({ ...form, placa: e.target.value })} required>
+                <option value="">Seleccione</option>
+                {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+              </select>
+            </Field>
+            <Field label="Fecha del mantenimiento">
+              <input type="date" style={inputStyle} value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} />
+            </Field>
+            <Field label="KM en el mantenimiento">
+              <input type="number" style={inputStyle} value={form.kmUltima} onChange={(e) => setForm({ ...form, kmUltima: e.target.value })} />
+            </Field>
+            <Field label="Próximo mantenimiento (KM)">
+              <input type="number" style={inputStyle} value={form.kmProxima} onChange={(e) => setForm({ ...form, kmProxima: e.target.value })} required />
+            </Field>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <Button type="submit"><Check size={14} /> Guardar</Button>
+              <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {sorted.length === 0 ? <EmptyState icon={Wrench} text="No hay mantenimientos registrados." /> : (
+        <Card style={{ padding: 0 }}>
+          <Table
+            headers={["Fecha", "Vehículo", "KM mantenimiento", "Próximo (KM)", "Faltan", ""]}
+            rows={sorted.map((m) => {
+              const v = veiculos.find((x) => x.placa === m.placa);
+              const falta = v?.kmAtual && m.kmProxima ? m.kmProxima - v.kmAtual : null;
+              return [
+                m.data ? m.data.split("-").reverse().join("/") : "—",
+                <PlateChip placa={m.placa} />, fmtNum(m.kmUltima), fmtNum(m.kmProxima),
+                falta === null ? "—" : (
+                  <span style={{ color: falta <= 0 ? C.red : falta <= 1000 ? C.yellow : C.green, fontWeight: 700 }}>
+                    {falta <= 0 ? `Vencido (${fmtNum(Math.abs(falta))} km)` : `${fmtNum(falta)} km`}
+                  </span>
+                ),
+                <RowActions onEdit={() => setForm({ ...m })} onDelete={() => setConfirmId(m.id)} confirming={confirmId === m.id} onConfirm={() => remove(m.id)} onCancel={() => setConfirmId(null)} />,
+              ];
+            })}
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   REPORTES
+--------------------------------------------------------------- */
+function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes, pedidos, tarifas, sucursales }) {
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [placaFiltro, setPlacaFiltro] = useState("");
+  const [sucursalFiltro, setSucursalFiltro] = useState("");
+
+  const inRange = (data) => {
+    if (!data) return true;
+    if (dataInicio && data < dataInicio) return false;
+    if (dataFim && data > dataFim) return false;
+    return true;
+  };
+  const placasDaSucursal = sucursalFiltro ? new Set(veiculos.filter((v) => v.sucursal === sucursalFiltro).map((v) => v.placa)) : null;
+  const matchPlaca = (p) => (!placaFiltro || p === placaFiltro) && (!placasDaSucursal || placasDaSucursal.has(p));
+
+  const viagensF = viagens.filter((v) => inRange(v.data) && matchPlaca(v.placa));
+  const viagensFIds = new Set(viagensF.map((v) => v.id));
+  const custosF = custos.filter((c) => inRange(c.data) && matchPlaca(c.placa));
+  const abastecimentosF = abastecimentos.filter((a) => inRange(a.data) && matchPlaca(a.placa));
+  const pedidosF = pedidos.filter((p) => viagensFIds.has(p.viagemId));
+
+  const totalCustos = custosF.reduce((s, c) => s + Number(c.valor || 0), 0);
+  const totalCombustivel = abastecimentosF.reduce((s, a) => s + Number(a.valor || 0), 0);
+  const totalLitros = abastecimentosF.reduce((s, a) => s + Number(a.litros || 0), 0);
+  const totalGeral = totalCustos + totalCombustivel;
+  const totalIngreso = pedidosF.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
+  const resultado = totalIngreso - totalGeral;
+
+  const comConsumo = withConsumo(abastecimentos).filter((a) => inRange(a.data) && matchPlaca(a.placa));
+  const consumos = comConsumo.filter((a) => a.consumo);
+  const consumoMedio = consumos.length ? consumos.reduce((s, a) => s + a.consumo, 0) / consumos.length : null;
+
+  const kmPorVeiculo = useMemo(() => {
+    const map = {};
+    comConsumo.forEach((a) => { if (a.kmRodado) map[a.placa] = (map[a.placa] || 0) + a.kmRodado; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [comConsumo]);
+  const totalKmRodados = kmPorVeiculo.reduce((s, [, km]) => s + km, 0);
+
+  const porCategoria = useMemo(() => {
+    const map = {};
+    custosF.forEach((c) => { map[c.tipo] = (map[c.tipo] || 0) + Number(c.valor || 0); });
+    return Object.entries(map);
+  }, [custosF]);
+
+  const periodoLabel = dataInicio || dataFim
+    ? `${dataInicio ? dataInicio.split("-").reverse().join("/") : "inicio"} hasta ${dataFim ? dataFim.split("-").reverse().join("/") : "hoy"}`
+    : "Todo el período";
+
+  return (
+    <div>
+      <SectionHeader title="Reportes" subtitle="Filtre por período y vehículo, y después genere el reporte en PDF"
+        action={<Button onClick={() => window.print()}><Printer size={15} /> Generar PDF / Imprimir</Button>} />
+
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+          <Field label="Fecha inicio">
+            <input type="date" style={inputStyle} value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+          </Field>
+          <Field label="Fecha fin">
+            <input type="date" style={inputStyle} value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+          </Field>
+          <Field label="Vehículo">
+            <select style={inputStyle} value={placaFiltro} onChange={(e) => setPlacaFiltro(e.target.value)}>
+              <option value="">Todos</option>
+              {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+            </select>
+          </Field>
+          <Field label="Sucursal">
+            <select style={inputStyle} value={sucursalFiltro} onChange={(e) => setSucursalFiltro(e.target.value)}>
+              <option value="">Todas</option>
+              {sucursales.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+        </div>
+      </Card>
+
+      <div id="report-print-area">
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 20, textTransform: "uppercase" }}>
+            Reporte de flota{placaFiltro ? ` — ${placaFiltro}` : ""}
+          </div>
+          <div style={{ color: C.muted, fontSize: 13 }}>{periodoLabel}</div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14, marginBottom: 20 }}>
+          <KPI icon={Package} label="Viajes en el período" value={viagensF.length} />
+          <KPI icon={Truck} label="Km rodados" value={totalKmRodados ? `${fmtNum(totalKmRodados)} km` : "—"} />
+          <KPI icon={Receipt} label="Ingreso por fletes" value={fmtMoney(totalIngreso)} />
+          <KPI icon={DollarSign} label="Costos generales" value={fmtMoney(totalCustos)} />
+          <KPI icon={Fuel} label="Combustible" value={fmtMoney(totalCombustivel)} />
+          <KPI icon={DollarSign} label="Total general (costos)" value={fmtMoney(totalGeral)} />
+          <KPI icon={resultado >= 0 ? TrendingUp : TrendingDown} label="Resultado (ingresos − gastos)" value={fmtMoney(resultado)} highlight={resultado >= 0 ? "green" : "red"} />
+          <KPI icon={Gauge} label="Consumo promedio" value={consumoMedio ? `${consumoMedio.toFixed(1)} km/l` : "—"} />
+        </div>
+
+        <Card style={{ marginBottom: 16 }}>
+          <ChartTitle>Ingresos por fletes vs. gastos</ChartTitle>
+          <div style={{ height: 220 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={[{ name: "Ingresos", value: totalIngreso }, { name: "Gastos", value: totalGeral }]}>
+                <CartesianGrid stroke={C.border} vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 12 }} />
+                <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  <Cell fill={C.green} />
+                  <Cell fill={C.red} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card style={{ marginBottom: 16, padding: 0 }}>
+          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Km rodados por vehículo</ChartTitle></div>
+          {kmPorVeiculo.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Truck} text="No hay suficientes cargas de combustible con KM para calcular los km rodados." /></div> : (
+            <Table
+              headers={["Vehículo", "Km rodados"]}
+              rows={kmPorVeiculo.map(([placa, km]) => [<PlateChip placa={placa} />, `${fmtNum(km)} km`])}
+            />
+          )}
+        </Card>
+
+        <Card style={{ marginBottom: 16, padding: 0 }}>
+          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Costos por categoría</ChartTitle></div>
+          {porCategoria.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={DollarSign} text="No hay costos en el período seleccionado." /></div> : (
+            <Table headers={["Categoría", "Total"]} rows={porCategoria.map(([tipo, valor]) => [tipo, fmtMoney(valor)])} />
+          )}
+        </Card>
+
+        <Card style={{ marginBottom: 16, padding: 0 }}>
+          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Viajes del período</ChartTitle></div>
+          {viagensF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Package} text="No hay viajes en el período seleccionado." /></div> : (
+            <Table
+              headers={["Fecha", "Vehículo", "Chofer", "Tipo de flete"]}
+              rows={[...viagensF].sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((v) => [
+                v.data ? v.data.split("-").reverse().join("/") : "—", <PlateChip placa={v.placa} />, v.motorista || "—", v.tipoFrete || "—",
+              ])}
+            />
+          )}
+        </Card>
+
+        <Card style={{ padding: 0 }}>
+          <div style={{ padding: "14px 16px 0" }}><ChartTitle>Cargas de combustible del período</ChartTitle></div>
+          {abastecimentosF.length === 0 ? <div style={{ padding: 16 }}><EmptyState icon={Fuel} text="No hay cargas de combustible en el período seleccionado." /></div> : (
+            <Table
+              headers={["Fecha", "Vehículo", "Litros", "Valor", "Consumo"]}
+              rows={comConsumo.sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((a) => [
+                a.data ? a.data.split("-").reverse().join("/") : "—", <PlateChip placa={a.placa} />, fmtNum(a.litros), fmtMoney(a.valor),
+                a.consumo ? `${a.consumo.toFixed(1)} km/l` : "—",
+              ])}
+            />
+          )}
+          <div style={{ padding: 14, fontSize: 12.5, color: C.muted, borderTop: `1px solid ${C.border}` }}>
+            Total: {fmtNum(totalLitros)} L · {fmtMoney(totalCombustivel)}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   TABLE / ROW ACTIONS
+--------------------------------------------------------------- */
+function Table({ headers, rows }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+        <thead>
+          <tr>
+            {headers.map((h, i) => (
+              <th key={i} style={{
+                textAlign: "left", padding: "12px 14px", color: C.muted, fontWeight: 700,
+                fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}`,
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} style={{ borderBottom: `1px solid ${C.border}` }}>
+              {row.map((cell, ci) => <td key={ci} style={{ padding: "10px 14px" }}>{cell}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RowActions({ onEdit, onDelete, confirming, onConfirm, onCancel }) {
+  if (confirming) return <ConfirmRow onConfirm={onConfirm} onCancel={onCancel} />;
+  return (
+    <span style={{ display: "inline-flex", gap: 10 }}>
+      <button onClick={onEdit} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}><Pencil size={15} /></button>
+      <button onClick={onDelete} style={{ background: "none", border: "none", color: C.red, cursor: "pointer" }}><Trash2 size={15} /></button>
+    </span>
+  );
+}
