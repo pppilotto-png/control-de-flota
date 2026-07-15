@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import {
   Truck, Users, Wrench, Package, DollarSign, LayoutDashboard, Plus, Trash2, X,
-  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid, Upload,
+  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid, Upload, Bell,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------
@@ -296,11 +296,12 @@ export default function App() {
   const [pedidos, setPedidos] = useState([]);
   const [tarifas, setTarifas] = useState(DEFAULT_TARIFAS);
   const [sucursales, setSucursales] = useState(["Casa Matriz"]);
+  const [chamados, setChamados] = useState([]);
   const [avisoDinatranOculto, setAvisoDinatranOculto] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [v, m, vi, c, ma, ab, pe, ta, su] = await Promise.all([
+      const [v, m, vi, c, ma, ab, pe, ta, su, ch] = await Promise.all([
         loadKey("veiculos", SEED_VEICULOS),
         loadKey("motoristas", SEED_MOTORISTAS),
         loadKey("viagens", []),
@@ -310,6 +311,7 @@ export default function App() {
         loadKey("pedidos", []),
         loadKey("tarifasFrete", DEFAULT_TARIFAS),
         loadKey("sucursales", ["Casa Matriz"]),
+        loadKey("chamados", []),
       ]);
       let viFinal = vi;
       let maxNum = Math.max(0, ...vi.map((x) => x.numero || 0));
@@ -330,6 +332,7 @@ export default function App() {
       setVeiculos(vFinal); setMotoristas(mFinal); setViagens(viFinal); setCustos(c); setManutencoes(ma); setAbastecimentos(ab);
       setPedidos(pe); setTarifas({ ...DEFAULT_TARIFAS, ...ta });
       setSucursales(su && su.length ? su : ["Casa Matriz"]);
+      setChamados(ch);
       setLoading(false);
     })();
   }, []);
@@ -361,6 +364,7 @@ export default function App() {
         { id: "custos", label: "Costos", icon: DollarSign },
         { id: "abastecimento", label: "Combustible", icon: Fuel },
         { id: "manutencao", label: "Mantenimiento", icon: Wrench },
+        { id: "chamados", label: "Chamados", icon: Bell },
         { id: "relatorios", label: "Reportes", icon: FileText },
         { id: "importar", label: "Importar", icon: Upload },
       ],
@@ -501,6 +505,9 @@ export default function App() {
         )}
         {tab === "manutencao" && (
           <ManutencaoPage manutencoes={manutencoes} setManutencoes={(d) => persist("manutencoes", setManutencoes, d)} veiculos={veiculos} setVeiculos={(d) => persist("veiculos", setVeiculos, d)} />
+        )}
+        {tab === "chamados" && (
+          <ChamadosPage chamados={chamados} setChamados={(d) => persist("chamados", setChamados, d)} manutencoes={manutencoes} setManutencoes={(d) => persist("manutencoes", setManutencoes, d)} veiculos={veiculos} />
         )}
         {tab === "relatorios" && (
           <RelatoriosPage veiculos={veiculos} viagens={viagens} custos={custos} abastecimentos={abastecimentos} manutencoes={manutencoes} pedidos={pedidos} tarifas={tarifas} sucursales={sucursales} />
@@ -2403,6 +2410,73 @@ function CustosPage({ custos, setCustos, veiculos }) {
 
 /* ---------------------------------------------------------------
    MANTENIMIENTO
+--------------------------------------------------------------- */
+/* ---------------------------------------------------------------
+   CHAMADOS DE MANTENIMIENTO (solicitados por los choferes)
+--------------------------------------------------------------- */
+function ChamadosPage({ chamados, setChamados, veiculos }) {
+  const [filtroEstado, setFiltroEstado] = useState("");
+  const [confirmId, setConfirmId] = useState(null);
+
+  const toggleEstado = (c) => setChamados(chamados.map((x) => (x.id === c.id ? { ...x, estado: x.estado === "Atendido" ? "Pendiente" : "Atendido" } : x)));
+  const remove = (id) => { setChamados(chamados.filter((c) => c.id !== id)); setConfirmId(null); };
+
+  const filtrados = chamados.filter((c) => !filtroEstado || (c.estado || "Pendiente") === filtroEstado);
+  const sorted = [...filtrados].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+  const pendientes = chamados.filter((c) => (c.estado || "Pendiente") === "Pendiente").length;
+
+  const urlFormulario = typeof window !== "undefined" ? `${window.location.origin}/chamado.html` : "/chamado.html";
+
+  return (
+    <div>
+      <SectionHeader title="Chamados" subtitle={`${chamados.length} solicitudes · ${pendientes} pendientes`} />
+
+      <Card style={{ marginBottom: 18, background: "rgba(47,107,47,0.06)", borderColor: C.yellow }}>
+        <div style={{ fontSize: 12.5, color: C.muted }}>
+          Los choferes piden mantenimiento desde este formulario (sin necesitar acceso a la app completa):
+          <br />
+          <a href={urlFormulario} target="_blank" rel="noreferrer" style={{ color: C.yellow, fontWeight: 700 }}>{urlFormulario}</a>
+          <br />
+          Compartíselo por WhatsApp, o pegalo como acceso directo en el celular de cada chofer.
+        </div>
+      </Card>
+
+      <div style={{ marginBottom: 16, maxWidth: 240 }}>
+        <Field label="Filtrar por estado">
+          <select style={inputStyle} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+            <option value="">Todos</option>
+            <option value="Pendiente">Pendiente</option>
+            <option value="Atendido">Atendido</option>
+          </select>
+        </Field>
+      </div>
+
+      {sorted.length === 0 ? (
+        <EmptyState icon={Bell} text="No hay chamados registrados todavía." />
+      ) : (
+        <Card style={{ padding: 0 }}>
+          <Table
+            headers={["Fecha", "Vehículo", "Chofer", "Urgencia", "Descripción", "Estado", ""]}
+            rows={sorted.map((c) => [
+              c.fecha ? c.fecha.split("-").reverse().join("/") : "—",
+              <PlateChip placa={c.placa} />,
+              c.motorista || "—",
+              <span style={{ color: c.urgencia === "Urgente" ? C.red : C.muted, fontWeight: c.urgencia === "Urgente" ? 700 : 400 }}>{c.urgencia || "Normal"}</span>,
+              c.descripcion || "—",
+              <span style={{ cursor: "pointer" }} onClick={() => toggleEstado(c)} title="Clic para cambiar el estado">
+                <EstadoBadge estado={c.estado || "Pendiente"} />
+              </span>,
+              <RowActions onEdit={() => {}} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />,
+            ])}
+          />
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   MANUTENÇÃO
 --------------------------------------------------------------- */
 function ManutencaoPage({ manutencoes, setManutencoes, veiculos, setVeiculos }) {
   const [form, setForm] = useState(null);
