@@ -651,17 +651,16 @@ function Dashboard({ veiculos: veiculosProp, viagens: viagensProp, custos: custo
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 22 }}>
-        <KPI icon={Truck} label="Vehículos registrados" value={veiculos.length} />
-        <KPI icon={Package} label="Viajes registrados" value={totalViagens} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 8, borderBottom: `2px solid ${C.border}` }}>
+        <DollarSign size={18} color={C.yellow} />
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 16, textTransform: "uppercase", letterSpacing: 0.5, color: C.text }}>Financiero</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 16 }}>
         <KPI icon={Receipt} label="Ingreso por fletes" value={fmtMoney(totalIngreso)} />
         <KPI icon={DollarSign} label="Total general (costos + combustible)" value={fmtMoney(totalGasto)} />
         <KPI icon={Fuel} label="Gasto en combustible" value={fmtMoney(totalCombustivel)} />
         <KPI icon={resultado >= 0 ? TrendingUp : TrendingDown} label="Resultado (ingresos − gastos)" value={fmtMoney(resultado)} highlight={resultado >= 0 ? "green" : "red"} />
-        <KPI icon={AlertTriangle} label="Mantenimiento vencido" value={vencidas} highlight={vencidas > 0 ? "red" : null} />
-        <KPI icon={Gauge} label="Mantenimiento próximo (≤1000km)" value={proximas} highlight={proximas > 0 ? "yellow" : null} />
-        <KPI icon={FileText} label="Dinatran vencido" value={dinatranVencidos} highlight={dinatranVencidos > 0 ? "red" : null} />
-        <KPI icon={FileText} label="Dinatran próximo (≤30 días)" value={dinatranProximos} highlight={dinatranProximos > 0 ? "yellow" : null} />
       </div>
 
       <div style={{ marginBottom: 16 }}>
@@ -684,7 +683,7 @@ function Dashboard({ veiculos: veiculosProp, viagens: viagensProp, custos: custo
         </Card>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
         <Card>
           <ChartTitle>Costos por categoría</ChartTitle>
           {porCategoria.length === 0 ? <EmptyState icon={DollarSign} text="Todavía no hay costos registrados." /> : (
@@ -720,7 +719,17 @@ function Dashboard({ veiculos: veiculosProp, viagens: viagensProp, custos: custo
         </Card>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 8, borderBottom: `2px solid ${C.border}` }}>
+        <Truck size={18} color={C.yellow} />
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 16, textTransform: "uppercase", letterSpacing: 0.5, color: C.text }}>Operación</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 16 }}>
+        <KPI icon={Truck} label="Vehículos registrados" value={veiculos.length} />
+        <KPI icon={Package} label="Viajes registrados" value={totalViagens} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <Card>
           <ChartTitle>Viajes por mes</ChartTitle>
           {porMes.length === 0 ? <EmptyState icon={Package} text="Todavía no hay viajes registrados." /> : (
@@ -738,6 +747,56 @@ function Dashboard({ veiculos: veiculosProp, viagens: viagensProp, custos: custo
           )}
         </Card>
 
+        <Card>
+          <ChartTitle>Combustible por vehículo (₲)</ChartTitle>
+          {combustivelPorVeiculo.length === 0 ? <EmptyState icon={Fuel} text="Todavía no hay cargas de combustible registradas." /> : (
+            <div style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={combustivelPorVeiculo}>
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                  <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
+                  <Bar dataKey="value" fill={C.red} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 32 }}>
+        <Card>
+          <ChartTitle>Consumo promedio por vehículo (km/l)</ChartTitle>
+          {consumoPorVeiculo.length === 0 ? <EmptyState icon={Gauge} text="Registre al menos 2 cargas de combustible por vehículo para calcular el consumo." /> : (
+            <div style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={consumoPorVeiculo}>
+                  <CartesianGrid stroke={C.border} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
+                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
+                  <Tooltip formatter={(v) => `${v} km/l`} contentStyle={tooltipStyle} />
+                  <Bar dataKey="value" fill={C.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 8, borderBottom: `2px solid ${C.border}` }}>
+        <AlertTriangle size={18} color={C.yellow} />
+        <span style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 16, textTransform: "uppercase", letterSpacing: 0.5, color: C.text }}>Alertas</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, marginBottom: 16 }}>
+        <KPI icon={AlertTriangle} label="Mantenimiento vencido" value={vencidas} highlight={vencidas > 0 ? "red" : null} />
+        <KPI icon={Gauge} label="Mantenimiento próximo (≤1000km)" value={proximas} highlight={proximas > 0 ? "yellow" : null} />
+        <KPI icon={FileText} label="Dinatran vencido" value={dinatranVencidos} highlight={dinatranVencidos > 0 ? "red" : null} />
+        <KPI icon={FileText} label="Dinatran próximo (≤30 días)" value={dinatranProximos} highlight={dinatranProximos > 0 ? "yellow" : null} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Card>
           <ChartTitle>Alertas de mantenimiento</ChartTitle>
           {alertas.length === 0 ? <EmptyState icon={Wrench} text="Registre el KM actual y el mantenimiento para ver alertas." /> : (
@@ -758,49 +817,11 @@ function Dashboard({ veiculos: veiculosProp, viagens: viagensProp, custos: custo
             </div>
           )}
         </Card>
-      </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 }}>
-        <Card>
-          <ChartTitle>Combustible por vehículo (₲)</ChartTitle>
-          {combustivelPorVeiculo.length === 0 ? <EmptyState icon={Fuel} text="Todavía no hay cargas de combustible registradas." /> : (
-            <div style={{ height: 240 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={combustivelPorVeiculo}>
-                  <CartesianGrid stroke={C.border} vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
-                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
-                  <Tooltip formatter={(v) => fmtMoney(v)} contentStyle={tooltipStyle} />
-                  <Bar dataKey="value" fill={C.red} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
-
-        <Card>
-          <ChartTitle>Consumo promedio por vehículo (km/l)</ChartTitle>
-          {consumoPorVeiculo.length === 0 ? <EmptyState icon={Gauge} text="Registre al menos 2 cargas de combustible por vehículo para calcular el consumo." /> : (
-            <div style={{ height: 240 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={consumoPorVeiculo}>
-                  <CartesianGrid stroke={C.border} vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
-                  <YAxis tick={{ fill: C.muted, fontSize: 11 }} />
-                  <Tooltip formatter={(v) => `${v} km/l`} contentStyle={tooltipStyle} />
-                  <Bar dataKey="value" fill={C.green} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
-      </div>
-
-      <div style={{ marginTop: 16 }}>
         <Card>
           <ChartTitle>Alertas de vencimiento Dinatran</ChartTitle>
           {alertasDinatran.length === 0 ? <EmptyState icon={FileText} text="Cargá la fecha de vencimiento Dinatran de cada vehículo para ver alertas." /> : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 240, overflowY: "auto" }}>
               {alertasDinatran.map((a) => (
                 <div key={a.placa} style={{
                   display: "flex", justifyContent: "space-between", alignItems: "center",
