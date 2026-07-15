@@ -2154,9 +2154,30 @@ function emptyCustoRow() {
 function CustosPage({ custos, setCustos, veiculos }) {
   const [form, setForm] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [editRow, setEditRow] = useState(null);
 
-  const openNew = () => setForm({ placa: "", rows: [emptyCustoRow(), emptyCustoRow(), emptyCustoRow()], editId: null });
-  const openEdit = (c) => setForm({ placa: c.placa, rows: [{ tipo: c.tipo, cantidad: c.cantidad || "1", valorUnitario: c.valorUnitario || c.valor || "", valor: c.valor, data: c.data, obs: c.obs }], editId: c.id });
+  const openNew = () => setForm({ placa: "", rows: [emptyCustoRow(), emptyCustoRow(), emptyCustoRow()] });
+
+  const openEdit = (c) => {
+    setEditId(c.id);
+    setEditRow({ placa: c.placa, tipo: c.tipo, cantidad: c.cantidad || "1", valorUnitario: c.valorUnitario || c.valor || "", valor: c.valor, data: c.data, obs: c.obs });
+  };
+  const updateEditRow = (field, value) => {
+    const actualizado = { ...editRow, [field]: value };
+    if (field === "cantidad" || field === "valorUnitario") {
+      const cant = Number(field === "cantidad" ? value : editRow.cantidad) || 0;
+      const vu = Number(field === "valorUnitario" ? value : editRow.valorUnitario) || 0;
+      actualizado.valor = cant && vu ? String(cant * vu) : "";
+    }
+    setEditRow(actualizado);
+  };
+  const saveEdit = (e) => {
+    e.preventDefault();
+    setCustos(custos.map((c) => (c.id === editId ? { ...editRow, id: editId } : c)));
+    setEditId(null);
+    setEditRow(null);
+  };
 
   const updateRow = (idx, field, value) => setForm({
     ...form,
@@ -2177,19 +2198,50 @@ function CustosPage({ custos, setCustos, veiculos }) {
   const save = (e) => {
     e.preventDefault();
     if (!form.placa) return;
-    if (form.editId) {
-      const row = form.rows[0];
-      setCustos(custos.map((c) => (c.id === form.editId ? { ...row, placa: form.placa, id: form.editId } : c)));
-    } else {
-      const validas = form.rows.filter((r) => r.tipo && r.valor);
-      if (validas.length === 0) return;
-      const nuevos = validas.map((r) => ({ ...r, placa: form.placa, id: uid() }));
-      setCustos([...custos, ...nuevos]);
-    }
+    const validas = form.rows.filter((r) => r.tipo && r.valor);
+    if (validas.length === 0) return;
+    const nuevos = validas.map((r) => ({ ...r, placa: form.placa, id: uid() }));
+    setCustos([...custos, ...nuevos]);
     setForm(null);
   };
   const remove = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmId(null); };
   const sorted = [...custos].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  const camposEdit = (
+    <form onSubmit={saveEdit} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, alignItems: "flex-end" }}>
+      <Field label="Vehículo">
+        <select style={inputStyle} value={editRow.placa} onChange={(e) => setEditRow({ ...editRow, placa: e.target.value })} required>
+          <option value="">Seleccione</option>
+          {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+        </select>
+      </Field>
+      <Field label="Categoría">
+        <select style={inputStyle} value={editRow.tipo} onChange={(e) => setEditRow({ ...editRow, tipo: e.target.value })}>
+          <option value="">Seleccione</option>
+          {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </Field>
+      <Field label="Cantidad">
+        <input type="number" style={inputStyle} value={editRow.cantidad ?? "1"} onChange={(e) => updateEditRow("cantidad", e.target.value)} />
+      </Field>
+      <Field label="Valor unitario (₲)">
+        <input type="number" style={inputStyle} value={editRow.valorUnitario ?? ""} onChange={(e) => updateEditRow("valorUnitario", e.target.value)} />
+      </Field>
+      <Field label="Total (₲)">
+        <input style={{ ...inputStyle, background: C.bg, color: C.muted }} value={editRow.valor ? fmtMoney(editRow.valor) : ""} disabled readOnly />
+      </Field>
+      <Field label="Fecha">
+        <input type="date" style={inputStyle} value={editRow.data} onChange={(e) => setEditRow({ ...editRow, data: e.target.value })} />
+      </Field>
+      <Field label="Observación">
+        <input style={inputStyle} value={editRow.obs} onChange={(e) => setEditRow({ ...editRow, obs: e.target.value })} />
+      </Field>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button type="submit"><Check size={14} /> Guardar</Button>
+        <Button variant="ghost" onClick={() => { setEditId(null); setEditRow(null); }}><X size={14} /> Cancelar</Button>
+      </div>
+    </form>
+  );
 
   return (
     <div>
@@ -2235,7 +2287,7 @@ function CustosPage({ custos, setCustos, veiculos }) {
                   <Field label="Observación">
                     <input style={inputStyle} value={row.obs} onChange={(e) => updateRow(idx, "obs", e.target.value)} />
                   </Field>
-                  {!form.editId && form.rows.length > 1 && (
+                  {form.rows.length > 1 && (
                     <button type="button" onClick={() => removeRow(idx)} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", justifySelf: "start" }}>
                       <Trash2 size={16} />
                     </button>
@@ -2245,9 +2297,7 @@ function CustosPage({ custos, setCustos, veiculos }) {
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              {!form.editId && (
-                <Button variant="ghost" type="button" onClick={addRow}><Plus size={14} /> Agregar otro costo</Button>
-              )}
+              <Button variant="ghost" type="button" onClick={addRow}><Plus size={14} /> Agregar otro costo</Button>
               <Button type="submit"><Check size={14} /> Guardar</Button>
               <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
             </div>
@@ -2257,14 +2307,45 @@ function CustosPage({ custos, setCustos, veiculos }) {
 
       {sorted.length === 0 ? <EmptyState icon={DollarSign} text="No hay costos registrados." /> : (
         <Card style={{ padding: 0 }}>
-          <Table
-            headers={["Fecha", "Vehículo", "Categoría", "Cantidad", "Valor unitario", "Total", "Obs.", ""]}
-            rows={sorted.map((c) => [
-              c.data ? c.data.split("-").reverse().join("/") : "—",
-              <PlateChip placa={c.placa} />, c.tipo, c.cantidad || "1", fmtMoney(c.valorUnitario || c.valor), fmtMoney(c.valor), c.obs || "—",
-              <RowActions onEdit={() => openEdit(c)} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />,
-            ])}
-          />
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+              <thead>
+                <tr>
+                  {["Fecha", "Vehículo", "Categoría", "Cantidad", "Valor unitario", "Total", "Obs.", ""].map((h, i) => (
+                    <th key={i} style={{
+                      textAlign: "left", padding: "12px 14px", color: C.muted, fontWeight: 700,
+                      fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}`,
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((c) => (
+                  <React.Fragment key={c.id}>
+                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                      <td style={{ padding: "10px 14px" }}>{c.data ? c.data.split("-").reverse().join("/") : "—"}</td>
+                      <td style={{ padding: "10px 14px" }}><PlateChip placa={c.placa} /></td>
+                      <td style={{ padding: "10px 14px" }}>{c.tipo}</td>
+                      <td style={{ padding: "10px 14px" }}>{c.cantidad || "1"}</td>
+                      <td style={{ padding: "10px 14px" }}>{fmtMoney(c.valorUnitario || c.valor)}</td>
+                      <td style={{ padding: "10px 14px" }}>{fmtMoney(c.valor)}</td>
+                      <td style={{ padding: "10px 14px" }}>{c.obs || "—"}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <RowActions onEdit={() => openEdit(c)} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />
+                      </td>
+                    </tr>
+                    {editId === c.id && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: 14, background: C.raised, borderBottom: `1px solid ${C.border}` }}>
+                          {camposEdit}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
     </div>
