@@ -2417,9 +2417,19 @@ function CustosPage({ custos, setCustos, veiculos }) {
 function ChamadosPage({ chamados, setChamados, veiculos }) {
   const [filtroEstado, setFiltroEstado] = useState("");
   const [confirmId, setConfirmId] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [editRow, setEditRow] = useState(null);
 
   const toggleEstado = (c) => setChamados(chamados.map((x) => (x.id === c.id ? { ...x, estado: x.estado === "Atendido" ? "Pendiente" : "Atendido" } : x)));
   const remove = (id) => { setChamados(chamados.filter((c) => c.id !== id)); setConfirmId(null); };
+
+  const openEdit = (c) => { setEditId(c.id); setEditRow({ ...c }); };
+  const saveEdit = (e) => {
+    e.preventDefault();
+    setChamados(chamados.map((c) => (c.id === editId ? { ...editRow, id: editId } : c)));
+    setEditId(null);
+    setEditRow(null);
+  };
 
   const filtrados = chamados.filter((c) => !filtroEstado || (c.estado || "Pendiente") === filtroEstado);
   const sorted = [...filtrados].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
@@ -2455,20 +2465,84 @@ function ChamadosPage({ chamados, setChamados, veiculos }) {
         <EmptyState icon={Bell} text="No hay chamados registrados todavía." />
       ) : (
         <Card style={{ padding: 0 }}>
-          <Table
-            headers={["Fecha", "Vehículo", "Chofer", "Urgencia", "Descripción", "Estado", ""]}
-            rows={sorted.map((c) => [
-              c.fecha ? c.fecha.split("-").reverse().join("/") : "—",
-              <PlateChip placa={c.placa} />,
-              c.motorista || "—",
-              <span style={{ color: c.urgencia === "Urgente" ? C.red : C.muted, fontWeight: c.urgencia === "Urgente" ? 700 : 400 }}>{c.urgencia || "Normal"}</span>,
-              c.descripcion || "—",
-              <span style={{ cursor: "pointer" }} onClick={() => toggleEstado(c)} title="Clic para cambiar el estado">
-                <EstadoBadge estado={c.estado || "Pendiente"} />
-              </span>,
-              <RowActions onEdit={() => {}} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />,
-            ])}
-          />
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+              <thead>
+                <tr>
+                  {["Fecha", "Vehículo", "Chofer", "Urgencia", "Descripción", "Estado", ""].map((h, i) => (
+                    <th key={i} style={{
+                      textAlign: "left", padding: "12px 14px", color: C.muted, fontWeight: 700,
+                      fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}`,
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((c) => (
+                  <React.Fragment key={c.id}>
+                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                      <td style={{ padding: "10px 14px" }}>{c.fecha ? c.fecha.split("-").reverse().join("/") : "—"}</td>
+                      <td style={{ padding: "10px 14px" }}><PlateChip placa={c.placa} /></td>
+                      <td style={{ padding: "10px 14px" }}>{c.motorista || "—"}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{ color: c.urgencia === "Urgente" ? C.red : C.muted, fontWeight: c.urgencia === "Urgente" ? 700 : 400 }}>{c.urgencia || "Normal"}</span>
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>{c.descripcion || "—"}</td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <span style={{ cursor: "pointer" }} onClick={() => toggleEstado(c)} title="Clic para cambiar el estado">
+                          <EstadoBadge estado={c.estado || "Pendiente"} />
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>
+                        <RowActions onEdit={() => openEdit(c)} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />
+                      </td>
+                    </tr>
+                    {editId === c.id && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 14, background: C.raised, borderBottom: `1px solid ${C.border}` }}>
+                          <form onSubmit={saveEdit} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, alignItems: "flex-end" }}>
+                            <Field label="Vehículo">
+                              <select style={inputStyle} value={editRow.placa} onChange={(e) => setEditRow({ ...editRow, placa: e.target.value })} required>
+                                <option value="">Seleccione</option>
+                                {veiculos.map((v) => <option key={v.id} value={v.placa}>{v.placa}</option>)}
+                              </select>
+                            </Field>
+                            <Field label="Chofer">
+                              <input style={inputStyle} value={editRow.motorista} onChange={(e) => setEditRow({ ...editRow, motorista: e.target.value })} />
+                            </Field>
+                            <Field label="Urgencia">
+                              <select style={inputStyle} value={editRow.urgencia || "Normal"} onChange={(e) => setEditRow({ ...editRow, urgencia: e.target.value })}>
+                                <option value="Normal">Normal</option>
+                                <option value="Urgente">Urgente</option>
+                              </select>
+                            </Field>
+                            <Field label="Estado">
+                              <select style={inputStyle} value={editRow.estado || "Pendiente"} onChange={(e) => setEditRow({ ...editRow, estado: e.target.value })}>
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Atendido">Atendido</option>
+                              </select>
+                            </Field>
+                            <Field label="Fecha">
+                              <input type="date" style={inputStyle} value={editRow.fecha || ""} onChange={(e) => setEditRow({ ...editRow, fecha: e.target.value })} />
+                            </Field>
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <Field label="Descripción">
+                                <textarea style={{ ...inputStyle, minHeight: 70 }} value={editRow.descripcion} onChange={(e) => setEditRow({ ...editRow, descripcion: e.target.value })} />
+                              </Field>
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <Button type="submit"><Check size={14} /> Guardar</Button>
+                              <Button variant="ghost" onClick={() => { setEditId(null); setEditRow(null); }}><X size={14} /> Cancelar</Button>
+                            </div>
+                          </form>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
     </div>
