@@ -511,6 +511,7 @@ export default function App() {
             viagens={viagens} setViagens={(d) => persist("viagens", setViagens, d)}
             pedidos={pedidos} setPedidos={(d) => persist("pedidos", setPedidos, d)}
             custos={custos} setCustos={(d) => persist("custos", setCustos, d)}
+            abastecimentos={abastecimentos} setAbastecimentos={(d) => persist("abastecimentos", setAbastecimentos, d)}
           />
         )}
       </div>
@@ -2992,13 +2993,15 @@ function ImportarSeccion({ titulo, columnas, onArchivo, filas, error, onConfirma
   );
 }
 
-function ImportarPage({ veiculos, viagens, setViagens, pedidos, setPedidos, custos, setCustos }) {
+function ImportarPage({ veiculos, viagens, setViagens, pedidos, setPedidos, custos, setCustos, abastecimentos, setAbastecimentos }) {
   const [filasViagens, setFilasViagens] = useState(null);
   const [filasPedidos, setFilasPedidos] = useState(null);
   const [filasCostos, setFilasCostos] = useState(null);
+  const [filasAbastecimentos, setFilasAbastecimentos] = useState(null);
   const [errorViagens, setErrorViagens] = useState("");
   const [errorPedidos, setErrorPedidos] = useState("");
   const [errorCostos, setErrorCostos] = useState("");
+  const [errorAbastecimentos, setErrorAbastecimentos] = useState("");
   const [resultado, setResultado] = useState("");
 
   const cargar = async (file, setFilas, setError) => {
@@ -3077,6 +3080,28 @@ function ImportarPage({ veiculos, viagens, setViagens, pedidos, setPedidos, cust
     setFilasCostos(null);
   };
 
+  const confirmarAbastecimentos = () => {
+    let sinViaje = 0;
+    const nuevos = filasAbastecimentos.map((f) => {
+      const numeroViaje = String(campoFila(f, "viaje n°", "viaje no", "viaje", "numero de viaje", "n° viaje")).trim();
+      const viagem = numeroViaje ? viagens.find((v) => String(v.numero) === numeroViaje) : null;
+      if (numeroViaje && !viagem) sinViaje += 1;
+      return {
+        id: uid(),
+        viagemId: viagem ? viagem.id : "",
+        placa: String(campoFila(f, "placa")).toUpperCase().trim(),
+        data: normalizarFecha(campoFila(f, "fecha")),
+        km: campoFila(f, "km"),
+        litros: campoFila(f, "litros"),
+        valor: campoFila(f, "valor"),
+        posto: campoFila(f, "estacion", "estación", "posto"),
+      };
+    });
+    setAbastecimentos([...abastecimentos, ...nuevos]);
+    setResultado(`Se importaron ${nuevos.length} cargas de combustible.${sinViaje ? ` ${sinViaje} mencionaban un N° de viaje que no se encontró.` : ""}`);
+    setFilasAbastecimentos(null);
+  };
+
   return (
     <div>
       <SectionHeader title="Importar" subtitle="Subí tus planillas de Excel o CSV para cargar datos de una sola vez" />
@@ -3124,6 +3149,15 @@ function ImportarPage({ veiculos, viagens, setViagens, pedidos, setPedidos, cust
         filas={filasCostos}
         error={errorCostos}
         onConfirmar={confirmarCostos}
+      />
+
+      <ImportarSeccion
+        titulo="4. Importar Combustible"
+        columnas={["Viaje N° (opcional)", "Placa", "Fecha", "KM", "Litros", "Valor", "Estación"]}
+        onArchivo={(file) => cargar(file, setFilasAbastecimentos, setErrorAbastecimentos)}
+        filas={filasAbastecimentos}
+        error={errorAbastecimentos}
+        onConfirmar={confirmarAbastecimentos}
       />
     </div>
   );
