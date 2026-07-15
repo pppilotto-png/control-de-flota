@@ -2207,7 +2207,7 @@ function CustosPage({ custos, setCustos, veiculos }) {
   const remove = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmId(null); };
   const sorted = [...custos].sort((a, b) => (b.data || "").localeCompare(a.data || ""));
 
-  const camposEdit = (
+  const renderCamposEdit = () => (
     <form onSubmit={saveEdit} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, alignItems: "flex-end" }}>
       <Field label="Vehículo">
         <select style={inputStyle} value={editRow.placa} onChange={(e) => setEditRow({ ...editRow, placa: e.target.value })} required>
@@ -2337,7 +2337,7 @@ function CustosPage({ custos, setCustos, veiculos }) {
                     {editId === c.id && (
                       <tr>
                         <td colSpan={8} style={{ padding: 14, background: C.raised, borderBottom: `1px solid ${C.border}` }}>
-                          {camposEdit}
+                          {renderCamposEdit()}
                         </td>
                       </tr>
                     )}
