@@ -1614,7 +1614,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
 function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCustos, abastecimentos, tarifas, veiculos, onEdit, onToggleEstado }) {
   const [tab, setTab] = useState("datos");
   const [pedidoRows, setPedidoRows] = useState([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
-  const [custoRows, setCustoRows] = useState([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }]);
+  const [custoRows, setCustoRows] = useState([emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow()]);
   const [confirmPedidoId, setConfirmPedidoId] = useState(null);
   const [confirmCustoId, setConfirmCustoId] = useState(null);
 
@@ -1636,15 +1636,24 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
   };
   const removePedido = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmPedidoId(null); };
 
-  const updateCustoRow = (idx, field, value) => setCustoRows(custoRows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
-  const addCustoRow = () => setCustoRows([...custoRows, { tipo: "", valor: "", data: "", obs: "" }]);
+  const updateCustoRow = (idx, field, value) => setCustoRows(custoRows.map((r, i) => {
+    if (i !== idx) return r;
+    const actualizado = { ...r, [field]: value };
+    if (field === "cantidad" || field === "valorUnitario") {
+      const cant = Number(field === "cantidad" ? value : r.cantidad) || 0;
+      const vu = Number(field === "valorUnitario" ? value : r.valorUnitario) || 0;
+      actualizado.valor = cant && vu ? String(cant * vu) : "";
+    }
+    return actualizado;
+  }));
+  const addCustoRow = () => setCustoRows([...custoRows, emptyCustoRow()]);
   const removeCustoRow = (idx) => setCustoRows(custoRows.length > 1 ? custoRows.filter((_, i) => i !== idx) : custoRows);
   const saveCustos = () => {
     const validas = custoRows.filter((r) => r.tipo && r.valor);
     if (validas.length === 0) return;
     const nuevos = validas.map((r) => ({ ...r, placa: viagem.placa, viagemId: viagem.id, id: uid() }));
     setCustos([...custos, ...nuevos]);
-    setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }]);
+    setCustoRows([emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow()]);
   };
   const removeCusto = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmCustoId(null); };
 
@@ -1795,16 +1804,16 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17 }}>Costos</div>
               <div style={{ display: "flex", gap: 8 }}>
-                <Button variant="ghost" onClick={() => setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }, { tipo: "", valor: "", data: "", obs: "" }])}><LayoutGrid size={14} /> Varios Costos</Button>
-                <Button onClick={() => setCustoRows([{ tipo: "", valor: "", data: "", obs: "" }])}><Plus size={14} /> Nuevo Costo</Button>
+                <Button variant="ghost" onClick={() => setCustoRows([emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow()])}><LayoutGrid size={14} /> Varios Costos</Button>
+                <Button onClick={() => setCustoRows([emptyCustoRow()])}><Plus size={14} /> Nuevo Costo</Button>
               </div>
             </div>
             {custosDoViagem.length > 0 && (
               <Card style={{ padding: 0, marginBottom: 14 }}>
                 <Table
-                  headers={["Categoría", "Valor", "Fecha", "Obs.", ""]}
+                  headers={["Categoría", "Cantidad", "Valor unitario", "Total", "Fecha", "Obs.", ""]}
                   rows={custosDoViagem.map((c) => [
-                    c.tipo, fmtMoney(c.valor), c.data ? c.data.split("-").reverse().join("/") : "—", c.obs || "—",
+                    c.tipo, c.cantidad || "1", fmtMoney(c.valorUnitario || c.valor), fmtMoney(c.valor), c.data ? c.data.split("-").reverse().join("/") : "—", c.obs || "—",
                     <RowActions onEdit={() => {}} onDelete={() => setConfirmCustoId(c.id)} confirming={confirmCustoId === c.id} onConfirm={() => removeCusto(c.id)} onCancel={() => setConfirmCustoId(null)} />,
                   ])}
                 />
@@ -1824,7 +1833,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
-                      {["Categoría", "Valor (₲)", "Fecha", "Observación", ""].map((h) => (
+                      {["Categoría", "Cantidad", "Valor unitario (₲)", "Total (₲)", "Fecha", "Observación", ""].map((h) => (
                         <th key={h} style={{ background: C.text, color: "#fff", textAlign: "left", padding: "9px 10px", fontSize: 11.5, fontWeight: 700 }}>{h}</th>
                       ))}
                     </tr>
@@ -1838,7 +1847,9 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
                             {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
                           </select>
                         </td>
-                        <td style={{ padding: 6 }}><input type="number" style={inputStyle} value={row.valor} onChange={(e) => updateCustoRow(idx, "valor", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}><input type="number" style={inputStyle} value={row.cantidad ?? "1"} onChange={(e) => updateCustoRow(idx, "cantidad", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}><input type="number" style={inputStyle} value={row.valorUnitario ?? ""} onChange={(e) => updateCustoRow(idx, "valorUnitario", e.target.value)} /></td>
+                        <td style={{ padding: 6 }}><input style={{ ...inputStyle, background: C.bg, color: C.muted }} value={row.valor ? fmtMoney(row.valor) : ""} disabled readOnly /></td>
                         <td style={{ padding: 6 }}><input type="date" style={inputStyle} value={row.data} onChange={(e) => updateCustoRow(idx, "data", e.target.value)} /></td>
                         <td style={{ padding: 6 }}><input style={inputStyle} value={row.obs} onChange={(e) => updateCustoRow(idx, "obs", e.target.value)} /></td>
                         <td style={{ padding: 6 }}>
@@ -2137,7 +2148,7 @@ function AbastecimentoPage({ abastecimentos, setAbastecimentos, veiculos, viagen
    COSTOS
 --------------------------------------------------------------- */
 function emptyCustoRow() {
-  return { tipo: "", valor: "", data: "", obs: "" };
+  return { tipo: "", cantidad: "1", valorUnitario: "", valor: "", data: "", obs: "" };
 }
 
 function CustosPage({ custos, setCustos, veiculos }) {
@@ -2145,9 +2156,21 @@ function CustosPage({ custos, setCustos, veiculos }) {
   const [confirmId, setConfirmId] = useState(null);
 
   const openNew = () => setForm({ placa: "", rows: [emptyCustoRow(), emptyCustoRow(), emptyCustoRow()], editId: null });
-  const openEdit = (c) => setForm({ placa: c.placa, rows: [{ tipo: c.tipo, valor: c.valor, data: c.data, obs: c.obs }], editId: c.id });
+  const openEdit = (c) => setForm({ placa: c.placa, rows: [{ tipo: c.tipo, cantidad: c.cantidad || "1", valorUnitario: c.valorUnitario || c.valor || "", valor: c.valor, data: c.data, obs: c.obs }], editId: c.id });
 
-  const updateRow = (idx, field, value) => setForm({ ...form, rows: form.rows.map((r, i) => (i === idx ? { ...r, [field]: value } : r)) });
+  const updateRow = (idx, field, value) => setForm({
+    ...form,
+    rows: form.rows.map((r, i) => {
+      if (i !== idx) return r;
+      const actualizado = { ...r, [field]: value };
+      if (field === "cantidad" || field === "valorUnitario") {
+        const cant = Number(field === "cantidad" ? value : r.cantidad) || 0;
+        const vu = Number(field === "valorUnitario" ? value : r.valorUnitario) || 0;
+        actualizado.valor = cant && vu ? String(cant * vu) : "";
+      }
+      return actualizado;
+    }),
+  });
   const addRow = () => setForm({ ...form, rows: [...form.rows, emptyCustoRow()] });
   const removeRow = (idx) => setForm({ ...form, rows: form.rows.length > 1 ? form.rows.filter((_, i) => i !== idx) : form.rows });
 
@@ -2197,8 +2220,14 @@ function CustosPage({ custos, setCustos, veiculos }) {
                       {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </Field>
-                  <Field label="Valor (₲)">
-                    <input type="number" style={inputStyle} value={row.valor} onChange={(e) => updateRow(idx, "valor", e.target.value)} />
+                  <Field label="Cantidad">
+                    <input type="number" style={inputStyle} value={row.cantidad ?? "1"} onChange={(e) => updateRow(idx, "cantidad", e.target.value)} />
+                  </Field>
+                  <Field label="Valor unitario (₲)">
+                    <input type="number" style={inputStyle} value={row.valorUnitario ?? ""} onChange={(e) => updateRow(idx, "valorUnitario", e.target.value)} />
+                  </Field>
+                  <Field label="Total (₲)">
+                    <input style={{ ...inputStyle, background: C.bg, color: C.muted }} value={row.valor ? fmtMoney(row.valor) : ""} disabled readOnly />
                   </Field>
                   <Field label="Fecha">
                     <input type="date" style={inputStyle} value={row.data} onChange={(e) => updateRow(idx, "data", e.target.value)} />
@@ -2229,10 +2258,10 @@ function CustosPage({ custos, setCustos, veiculos }) {
       {sorted.length === 0 ? <EmptyState icon={DollarSign} text="No hay costos registrados." /> : (
         <Card style={{ padding: 0 }}>
           <Table
-            headers={["Fecha", "Vehículo", "Categoría", "Valor", "Obs.", ""]}
+            headers={["Fecha", "Vehículo", "Categoría", "Cantidad", "Valor unitario", "Total", "Obs.", ""]}
             rows={sorted.map((c) => [
               c.data ? c.data.split("-").reverse().join("/") : "—",
-              <PlateChip placa={c.placa} />, c.tipo, fmtMoney(c.valor), c.obs || "—",
+              <PlateChip placa={c.placa} />, c.tipo, c.cantidad || "1", fmtMoney(c.valorUnitario || c.valor), fmtMoney(c.valor), c.obs || "—",
               <RowActions onEdit={() => openEdit(c)} onDelete={() => setConfirmId(c.id)} confirming={confirmId === c.id} onConfirm={() => remove(c.id)} onCancel={() => setConfirmId(null)} />,
             ])}
           />
