@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import * as XLSX from "xlsx";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
   LineChart, Line, CartesianGrid, Legend,
 } from "recharts";
 import {
   Truck, Users, Wrench, Package, DollarSign, LayoutDashboard, Plus, Trash2, X,
-  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid,
+  AlertTriangle, Pencil, Check, Loader2, Gauge, Fuel, FileText, Printer, Receipt, TrendingUp, TrendingDown, Building2, LayoutGrid, Upload,
 } from "lucide-react";
 
 /* ---------------------------------------------------------------
@@ -97,6 +98,61 @@ function diasParaVencer(dataStr) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const venc = new Date(dataStr + "T00:00:00");
   return Math.round((venc - hoje) / 86400000);
+}
+
+/* --- Helpers de importación de planillas (Excel / CSV) --- */
+
+function normalizarTexto(s) {
+  return String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/* Busca en una fila (objeto {columna: valor}) el primer valor cuya columna
+   coincida (sin importar acentos/mayúsculas) con alguno de los nombres dados. */
+function campoFila(fila, ...nombres) {
+  const buscados = nombres.map(normalizarTexto);
+  for (const key of Object.keys(fila)) {
+    if (buscados.includes(normalizarTexto(key))) {
+      const v = fila[key];
+      return v === undefined || v === null ? "" : v;
+    }
+  }
+  return "";
+}
+
+/* Convierte un valor de fecha (texto dd/mm/aaaa, aaaa-mm-dd, o número serial
+   de Excel) al formato aaaa-mm-dd que usa la app. */
+function normalizarFecha(valor) {
+  if (valor === "" || valor === undefined || valor === null) return "";
+  if (typeof valor === "number") {
+    const d = XLSX.SSF.parse_date_code(valor);
+    if (!d) return "";
+    return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+  }
+  const s = String(valor).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return "";
+}
+
+/* Lee un archivo .xlsx/.xls/.csv y devuelve las filas de la primera hoja
+   como array de objetos {columna: valor}. */
+function leerPlanilla(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array", cellDates: false });
+        const hoja = wb.Sheets[wb.SheetNames[0]];
+        const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
+        resolve(filas);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 /* ---------------------------------------------------------------
@@ -306,6 +362,7 @@ export default function App() {
         { id: "abastecimento", label: "Combustible", icon: Fuel },
         { id: "manutencao", label: "Mantenimiento", icon: Wrench },
         { id: "relatorios", label: "Reportes", icon: FileText },
+        { id: "importar", label: "Importar", icon: Upload },
       ],
     },
   ];
@@ -447,6 +504,14 @@ export default function App() {
         )}
         {tab === "relatorios" && (
           <RelatoriosPage veiculos={veiculos} viagens={viagens} custos={custos} abastecimentos={abastecimentos} manutencoes={manutencoes} pedidos={pedidos} tarifas={tarifas} sucursales={sucursales} />
+        )}
+        {tab === "importar" && (
+          <ImportarPage
+            veiculos={veiculos}
+            viagens={viagens} setViagens={(d) => persist("viagens", setViagens, d)}
+            pedidos={pedidos} setPedidos={(d) => persist("pedidos", setPedidos, d)}
+            custos={custos} setCustos={(d) => persist("custos", setCustos, d)}
+          />
         )}
       </div>
       </div>
@@ -2717,6 +2782,191 @@ function RelatoriosPage({ veiculos, viagens, custos, abastecimentos, manutencoes
         )}
       </div>
       )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------
+   IMPORTAR
+--------------------------------------------------------------- */
+function ImportarSeccion({ titulo, columnas, onArchivo, filas, error, onConfirmar, resumenExtra }) {
+  return (
+    <Card style={{ marginBottom: 18 }}>
+      <ChartTitle>{titulo}</ChartTitle>
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
+        La primera fila de tu planilla debe tener estos nombres de columna (no importan mayúsculas ni acentos):
+        <br />
+        <b>{columnas.join(" · ")}</b>
+      </div>
+      <label style={{
+        display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 7,
+        border: `1px solid ${C.border}`, cursor: "pointer", fontSize: 13, fontWeight: 700, color: C.text,
+      }}>
+        <Upload size={15} />
+        Elegir archivo (.xlsx, .xls o .csv)
+        <input type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={(e) => e.target.files[0] && onArchivo(e.target.files[0])} />
+      </label>
+
+      {error && <div style={{ color: C.red, fontSize: 12.5, marginTop: 10 }}>{error}</div>}
+
+      {filas && filas.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 8 }}>
+            Se encontraron <b>{filas.length}</b> filas. Vista previa de las primeras 5:
+          </div>
+          <div style={{ overflowX: "auto", marginBottom: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <thead>
+                <tr>{Object.keys(filas[0]).map((k) => <th key={k} style={{ textAlign: "left", padding: "6px 8px", color: C.muted, borderBottom: `1px solid ${C.border}` }}>{k}</th>)}</tr>
+              </thead>
+              <tbody>
+                {filas.slice(0, 5).map((f, i) => (
+                  <tr key={i}>{Object.keys(filas[0]).map((k) => <td key={k} style={{ padding: "6px 8px", borderBottom: `1px solid ${C.border}` }}>{String(f[k])}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {resumenExtra}
+          <Button onClick={onConfirmar}><Check size={14} /> Confirmar importación ({filas.length} filas)</Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ImportarPage({ veiculos, viagens, setViagens, pedidos, setPedidos, custos, setCustos }) {
+  const [filasViagens, setFilasViagens] = useState(null);
+  const [filasPedidos, setFilasPedidos] = useState(null);
+  const [filasCostos, setFilasCostos] = useState(null);
+  const [errorViagens, setErrorViagens] = useState("");
+  const [errorPedidos, setErrorPedidos] = useState("");
+  const [errorCostos, setErrorCostos] = useState("");
+  const [resultado, setResultado] = useState("");
+
+  const cargar = async (file, setFilas, setError) => {
+    setError("");
+    try {
+      const filas = await leerPlanilla(file);
+      if (filas.length === 0) { setError("El archivo no tiene filas de datos."); return; }
+      setFilas(filas);
+    } catch (e) {
+      setError("No se pudo leer el archivo. Verificá que sea un .xlsx, .xls o .csv válido.");
+    }
+  };
+
+  const confirmarViagens = () => {
+    let numero = Math.max(0, ...viagens.map((v) => v.numero || 0));
+    const nuevos = filasViagens.map((f) => {
+      numero += 1;
+      const data = normalizarFecha(campoFila(f, "fecha salida", "fecha"));
+      const mes = data ? MESES[new Date(data + "T00:00:00").getMonth()] : "";
+      return {
+        id: uid(), numero,
+        placa: String(campoFila(f, "placa")).toUpperCase().trim(),
+        motorista: campoFila(f, "chofer", "motorista"),
+        data, mes,
+        dataChegada: normalizarFecha(campoFila(f, "fecha llegada")),
+        sucursal: campoFila(f, "sucursal"),
+        estado: campoFila(f, "estado") || "En curso",
+        kmInicial: campoFila(f, "km inicial", "km_inicial") || "",
+        kmFinal: campoFila(f, "km final", "km_final") || "",
+      };
+    });
+    setViagens([...viagens, ...nuevos]);
+    setResultado(`Se importaron ${nuevos.length} viajes (N° ${nuevos[0]?.numero} al ${nuevos[nuevos.length - 1]?.numero}).`);
+    setFilasViagens(null);
+  };
+
+  const confirmarPedidos = () => {
+    let sinViaje = 0;
+    const nuevos = filasPedidos.map((f) => {
+      const numeroViaje = String(campoFila(f, "viaje n°", "viaje no", "viaje", "numero de viaje", "n° viaje")).trim();
+      const viagem = viagens.find((v) => String(v.numero) === numeroViaje);
+      if (!viagem) sinViaje += 1;
+      return {
+        id: uid(),
+        viagemId: viagem ? viagem.id : "",
+        fatura: campoFila(f, "factura"),
+        pedido: campoFila(f, "pedido"),
+        cliente: campoFila(f, "cliente"),
+        valorFatura: campoFila(f, "valor factura", "monto factura", "valor"),
+        tipoFlete: campoFila(f, "tipo de flete", "tipo flete"),
+      };
+    });
+    setPedidos([...pedidos, ...nuevos]);
+    setResultado(`Se importaron ${nuevos.length} pedidos.${sinViaje ? ` ${sinViaje} no encontraron un viaje con ese N° y quedaron sin viaje asociado.` : ""}`);
+    setFilasPedidos(null);
+  };
+
+  const confirmarCostos = () => {
+    let sinViaje = 0;
+    const nuevos = filasCostos.map((f) => {
+      const numeroViaje = String(campoFila(f, "viaje n°", "viaje no", "viaje", "numero de viaje", "n° viaje")).trim();
+      const viagem = numeroViaje ? viagens.find((v) => String(v.numero) === numeroViaje) : null;
+      if (numeroViaje && !viagem) sinViaje += 1;
+      return {
+        id: uid(),
+        viagemId: viagem ? viagem.id : "",
+        placa: String(campoFila(f, "placa")).toUpperCase().trim(),
+        tipo: campoFila(f, "categoria", "categoría", "tipo"),
+        valor: campoFila(f, "valor"),
+        data: normalizarFecha(campoFila(f, "fecha")),
+        obs: campoFila(f, "observacion", "observación", "obs"),
+      };
+    });
+    setCustos([...custos, ...nuevos]);
+    setResultado(`Se importaron ${nuevos.length} costos.${sinViaje ? ` ${sinViaje} mencionaban un N° de viaje que no se encontró.` : ""}`);
+    setFilasCostos(null);
+  };
+
+  return (
+    <div>
+      <SectionHeader title="Importar" subtitle="Subí tus planillas de Excel o CSV para cargar datos de una sola vez" />
+
+      <Card style={{ marginBottom: 18, background: "rgba(47,107,47,0.06)", borderColor: C.yellow }}>
+        <div style={{ fontSize: 12.5, color: C.muted }}>
+          Importá primero los <b>Viajes</b>, después los <b>Pedidos</b> y <b>Costos</b> — estos últimos se vinculan
+          a un viaje buscando su <b>N° de viaje</b> (la columna "Viaje N°" de tu planilla) entre los viajes ya cargados.
+        </div>
+      </Card>
+
+      {resultado && (
+        <Card style={{ marginBottom: 18, borderColor: C.green }}>
+          <div style={{ color: C.green, fontWeight: 700, fontSize: 13 }}>{resultado}</div>
+        </Card>
+      )}
+
+      <ImportarSeccion
+        titulo="1. Importar Viajes"
+        columnas={["Placa", "Chofer", "Fecha salida", "Fecha llegada", "Sucursal", "Estado", "KM inicial", "KM final"]}
+        onArchivo={(file) => cargar(file, setFilasViagens, setErrorViagens)}
+        filas={filasViagens}
+        error={errorViagens}
+        onConfirmar={confirmarViagens}
+      />
+
+      <ImportarSeccion
+        titulo="2. Importar Pedidos"
+        columnas={["Viaje N°", "Factura", "Pedido", "Cliente", "Valor factura", "Tipo de flete"]}
+        onArchivo={(file) => cargar(file, setFilasPedidos, setErrorPedidos)}
+        filas={filasPedidos}
+        error={errorPedidos}
+        onConfirmar={confirmarPedidos}
+        resumenExtra={
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>
+            Viajes ya cargados en el sistema para vincular: <b>{viagens.length}</b>
+          </div>
+        }
+      />
+
+      <ImportarSeccion
+        titulo="3. Importar Costos"
+        columnas={["Viaje N° (opcional)", "Placa", "Categoría", "Valor", "Fecha", "Observación"]}
+        onArchivo={(file) => cargar(file, setFilasCostos, setErrorCostos)}
+        filas={filasCostos}
+        error={errorCostos}
+        onConfirmar={confirmarCostos}
+      />
     </div>
   );
 }
