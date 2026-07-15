@@ -852,17 +852,25 @@ function VeiculosPage({ veiculos, setVeiculos, motoristas, sucursales, setSucurs
   const [novaSucursal, setNovaSucursal] = useState("");
   const [filtroSucursal, setFiltroSucursal] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [errorPlaca, setErrorPlaca] = useState("");
 
-  const openNew = () => setForm({ id: null, placa: "", peso: "", motorista: "", kmAtual: "", sucursal: sucursales[0] || "", estado: "Activo" });
-  const openEdit = (v) => setForm({ ...v });
+  const openNew = () => { setForm({ id: null, placa: "", peso: "", motorista: "", kmAtual: "", sucursal: sucursales[0] || "", estado: "Activo" }); setErrorPlaca(""); };
+  const openEdit = (v) => { setForm({ ...v }); setErrorPlaca(""); };
 
   const save = (e) => {
     e.preventDefault();
     if (!form.placa) return;
+    const placaNorm = form.placa.trim().toUpperCase();
+    const yaExiste = veiculos.some((v) => v.id !== form.id && v.placa.trim().toUpperCase() === placaNorm);
+    if (yaExiste) {
+      setErrorPlaca(`Ya existe un vehículo registrado con la chapa ${placaNorm}.`);
+      return;
+    }
+    setErrorPlaca("");
     if (form.id) {
-      setVeiculos(veiculos.map((v) => (v.id === form.id ? { ...form } : v)));
+      setVeiculos(veiculos.map((v) => (v.id === form.id ? { ...form, placa: placaNorm } : v)));
     } else {
-      setVeiculos([...veiculos, { ...form, id: uid() }]);
+      setVeiculos([...veiculos, { ...form, placa: placaNorm, id: uid() }]);
     }
     setForm(null);
   };
@@ -944,6 +952,9 @@ function VeiculosPage({ veiculos, setVeiculos, motoristas, sucursales, setSucurs
             <Field label="Vencimiento Dinatran">
               <input type="date" style={inputStyle} value={form.dinatran || ""} onChange={(e) => setForm({ ...form, dinatran: e.target.value })} />
             </Field>
+            {errorPlaca && (
+              <div style={{ gridColumn: "1 / -1", color: C.red, fontSize: 12.5, fontWeight: 600 }}>{errorPlaca}</div>
+            )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
               <Button type="submit"><Check size={14} /> Guardar</Button>
               <Button variant="ghost" onClick={() => setForm(null)}><X size={14} /> Cancelar</Button>
