@@ -1532,75 +1532,91 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
       )}
 
       {filtrados.length === 0 ? <EmptyState icon={Package} text={viagens.length === 0 ? "No hay viajes registrados." : "Ningún viaje coincide con los filtros."} /> : (
-        <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16, alignItems: "start" }}>
-          {/* LISTA */}
-          <div>
-            <Card style={{ padding: 0 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12, maxHeight: 640, overflowY: "auto" }}>
+        <Card style={{ padding: 0 }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+              <thead>
+                <tr>
+                  {cols.map((h, i) => (
+                    <th key={i} style={{
+                      textAlign: "left", padding: "12px 14px", color: C.muted, fontWeight: 700,
+                      fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}`,
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
                 {sorted.map((v) => {
-                  const selected = expandedId === v.id;
+                  const s = statsDaViagem(v.id);
                   return (
-                    <div
+                    <tr
                       key={v.id}
                       onClick={() => setExpandedId(v.id)}
-                      style={{
-                        display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8,
-                        padding: "12px 14px", borderRadius: 8, cursor: "pointer",
-                        border: `1px solid ${selected ? C.yellow : C.border}`,
-                        borderLeft: `4px solid ${C.yellow}`,
-                        background: selected ? C.raised : C.surface,
-                      }}
+                      style={{ borderBottom: `1px solid ${C.border}`, cursor: "pointer" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = C.bg)}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                          <span style={{ fontWeight: 700, fontSize: 14.5, color: C.text }}>Viaje {v.numero}</span>
+                      <td style={{ padding: "10px 14px", fontWeight: 700, color: C.muted }}>{v.numero ?? "—"}</td>
+                      <td style={{ padding: "10px 14px" }}>{v.data ? v.data.split("-").reverse().join("/") : "—"}</td>
+                      <td style={{ padding: "10px 14px" }}><PlateChip placa={v.placa} /></td>
+                      <td style={{ padding: "10px 14px", color: C.muted, fontSize: 12.5 }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Building2 size={13} /> {v.sucursal || sucursalDelVehiculo(v.placa) || "—"}</span>
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>{v.motorista || "—"}</td>
+                      <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
+                        <span style={{ cursor: "pointer" }} onClick={() => toggleEstado(v)} title="Clic para cambiar el estado">
                           <EstadoBadge estado={v.estado || "En curso"} />
-                        </div>
-                        <div style={{ fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                          <FileText size={12} /> {v.data ? v.data.split("-").reverse().join("/") : "—"}
-                        </div>
-                        <div style={{ fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                          <Truck size={12} /> {v.placa}
-                        </div>
-                        <div style={{ fontSize: 12, color: C.muted, display: "flex", alignItems: "center", gap: 5 }}>
-                          <Users size={12} /> {v.motorista || "—"}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => setForm({ ...v })} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: 5, color: C.muted, cursor: "pointer" }}>
-                          <Pencil size={13} />
-                        </button>
-                        {confirmId === v.id ? (
-                          <div style={{ display: "flex", gap: 3 }}>
-                            <button onClick={() => remove(v.id)} style={{ background: C.red, border: "none", borderRadius: 6, padding: "5px 6px", color: "#fff", cursor: "pointer", fontSize: 10 }}>Sí</button>
-                            <button onClick={() => setConfirmId(null)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "5px 6px", color: C.muted, cursor: "pointer", fontSize: 10 }}>No</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setConfirmId(v.id)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: 5, color: C.red, cursor: "pointer" }}>
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>
+                        {v.kmInicial && v.kmFinal ? `${fmtNum(Number(v.kmFinal) - Number(v.kmInicial))} km` : "—"}
+                      </td>
+                      <td style={{ padding: "10px 14px" }}>{s.cantidad}</td>
+                      <td style={{ padding: "10px 14px" }}>{fmtMoney(s.valorFacturas)}</td>
+                      <td style={{ padding: "10px 14px", color: C.green, fontWeight: 700 }}>{fmtMoney(s.ingreso)}</td>
+                      <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
+                        <RowActions onEdit={() => setForm({ ...v })} onDelete={() => setConfirmId(v.id)} confirming={confirmId === v.id} onConfirm={() => remove(v.id)} onCancel={() => setConfirmId(null)} />
+                      </td>
+                    </tr>
                   );
                 })}
-              </div>
-              {totalPaginas > 1 && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderTop: `1px solid ${C.border}` }}>
-                  <Button variant="ghost" onClick={() => setPagina(Math.max(1, paginaActual - 1))} style={paginaActual === 1 ? { opacity: 0.4, pointerEvents: "none" } : {}}>Anterior</Button>
-                  <span style={{ fontSize: 11.5, color: C.muted }}>{paginaActual}/{totalPaginas}</span>
-                  <Button variant="ghost" onClick={() => setPagina(Math.min(totalPaginas, paginaActual + 1))} style={paginaActual === totalPaginas ? { opacity: 0.4, pointerEvents: "none" } : {}}>Siguiente</Button>
-                </div>
-              )}
-            </Card>
+              </tbody>
+            </table>
           </div>
+          {totalPaginas > 1 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", borderTop: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 12, color: C.muted }}>
+                Mostrando {(paginaActual - 1) * PAGE_SIZE + 1}–{Math.min(paginaActual * PAGE_SIZE, filtrados.length)} de {filtrados.length}
+              </span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Button variant="ghost" onClick={() => setPagina(Math.max(1, paginaActual - 1))} style={paginaActual === 1 ? { opacity: 0.4, pointerEvents: "none" } : {}}>Anterior</Button>
+                <span style={{ fontSize: 12.5, color: C.muted }}>Página {paginaActual} de {totalPaginas}</span>
+                <Button variant="ghost" onClick={() => setPagina(Math.min(totalPaginas, paginaActual + 1))} style={paginaActual === totalPaginas ? { opacity: 0.4, pointerEvents: "none" } : {}}>Siguiente</Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
-          {/* DETALLE */}
-          <div>
-            {(() => {
-              const viagemSelecionada = filtrados.find((v) => v.id === expandedId) || sorted[0];
-              if (!viagemSelecionada) return <EmptyState icon={Package} text="Elegí un viaje de la lista para ver su detalle." />;
-              return (
+      {expandedId && (() => {
+        const viagemSelecionada = filtrados.find((v) => v.id === expandedId);
+        if (!viagemSelecionada) return null;
+        return (
+          <>
+            <div
+              onClick={() => setExpandedId(null)}
+              style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,0.45)", zIndex: 40 }}
+            />
+            <div style={{
+              position: "fixed", top: 0, right: 0, height: "100vh", width: "min(680px, 100vw)",
+              background: C.bg, zIndex: 41, overflowY: "auto", boxShadow: "-8px 0 24px rgba(0,0,0,0.15)",
+            }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 16px 0" }}>
+                <button onClick={() => setExpandedId(null)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 8, color: C.muted, cursor: "pointer" }}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div style={{ padding: "8px 20px 24px" }}>
                 <ViagemDetalle
                   viagem={viagemSelecionada}
                   sucursal={viagemSelecionada.sucursal || sucursalDelVehiculo(viagemSelecionada.placa)}
@@ -1612,11 +1628,11 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
                   onEdit={(v) => setForm({ ...v })}
                   onToggleEstado={toggleEstado}
                 />
-              );
-            })()}
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
