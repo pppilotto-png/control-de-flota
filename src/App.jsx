@@ -61,6 +61,45 @@ function withConsumo(abastecimentos) {
   });
   return result;
 }
+
+/* Ciclos de combustible de un vehículo: el tramo de KM entre dos cargas
+   consecutivas. El costo/litros de la carga que CIERRA el ciclo es lo que
+   se reparte entre los viajes que ocurrieron dentro de ese tramo de KM. */
+function ciclosDeCombustible(placa, abastecimentos) {
+  const delVehiculo = abastecimentos
+    .filter((a) => a.placa === placa && a.km !== "" && a.km !== null && a.km !== undefined)
+    .map((a) => ({ ...a, km: Number(a.km) }))
+    .sort((a, b) => a.km - b.km);
+  const ciclos = [];
+  for (let i = 1; i < delVehiculo.length; i++) {
+    ciclos.push({
+      kmDesde: delVehiculo[i - 1].km,
+      kmHasta: delVehiculo[i].km,
+      valor: Number(delVehiculo[i].valor || 0),
+      litros: Number(delVehiculo[i].litros || 0),
+    });
+  }
+  return ciclos;
+}
+
+/* Combustible (valor y litros) que le corresponde a un viaje, repartido
+   proporcionalmente entre todos los viajes del mismo vehículo que cayeron
+   dentro del mismo ciclo de combustible (según los KM inicial/final de cada uno). */
+function combustibleDelViaje(viagem, viagens, abastecimentos) {
+  if (!viagem.kmInicial || !viagem.kmFinal || !viagem.placa) return { valor: 0, litros: 0 };
+  const kmIni = Number(viagem.kmInicial), kmFin = Number(viagem.kmFinal);
+  const ciclos = ciclosDeCombustible(viagem.placa, abastecimentos);
+  const ciclo = ciclos.find((c) => kmIni >= c.kmDesde && kmFin <= c.kmHasta);
+  if (!ciclo) return { valor: 0, litros: 0 };
+  const viajesDelCiclo = viagens.filter((v) =>
+    v.placa === viagem.placa && v.kmInicial && v.kmFinal &&
+    Number(v.kmInicial) >= ciclo.kmDesde && Number(v.kmFinal) <= ciclo.kmHasta
+  );
+  const totalKmCiclo = viajesDelCiclo.reduce((s, v) => s + (Number(v.kmFinal) - Number(v.kmInicial)), 0);
+  if (totalKmCiclo <= 0) return { valor: 0, litros: 0 };
+  const proporcion = (kmFin - kmIni) / totalKmCiclo;
+  return { valor: ciclo.valor * proporcion, litros: ciclo.litros * proporcion };
+}
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 const SEED_VEICULOS = [
@@ -1243,7 +1282,6 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
             const vehiculo = veiculos.find((x) => x.placa === v.placa);
             const pedidosDoViagem = pedidos.filter((p) => p.viagemId === v.id);
             const custosDoViagem = custos.filter((c) => c.viagemId === v.id);
-            const abastecimentosDoViagem = (abastecimentos || []).filter((a) => a.viagemId === v.id);
             const km = v.kmInicial && v.kmFinal ? Number(v.kmFinal) - Number(v.kmInicial) : null;
             const fleteTotal = pedidosDoViagem.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
             const facturaTotal = pedidosDoViagem.reduce((s, p) => s + Number(p.valorFatura || 0), 0);
@@ -1251,8 +1289,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
             const custosPorTipo = {};
             TIPOS_CUSTO.forEach((t) => { custosPorTipo[t] = 0; });
             custosDoViagem.forEach((c) => { custosPorTipo[c.tipo] = (custosPorTipo[c.tipo] || 0) + Number(c.valor || 0); });
-            const combustibleValor = abastecimentosDoViagem.reduce((s, a) => s + Number(a.valor || 0), 0);
-            const combustibleLitros = abastecimentosDoViagem.reduce((s, a) => s + Number(a.litros || 0), 0);
+            const { valor: combustibleValor, litros: combustibleLitros } = combustibleDelViaje(v, viagens, abastecimentos);
             const custoTotal = custosDoViagem.reduce((s, c) => s + Number(c.valor || 0), 0) + combustibleValor;
             const lucro = fleteTotal - custoTotal;
             const margen = fleteTotal > 0 ? (lucro / fleteTotal) * 100 : 0;
@@ -1347,7 +1384,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
                         </div>
                       ))}
                       <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px", borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
-                        <span style={{ color: C.muted }}>Combustible {combustibleLitros ? `(${fmtNum(combustibleLitros)} L)` : ""}</span>
+                        <span style={{ color: C.muted }}>Combustible {combustibleLitros ? `(${combustibleLitros.toFixed(1)} L)` : ""}</span>
                         <span style={{ fontWeight: 700 }}>{fmtMoney(combustibleValor)}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px", background: "rgba(122,15,19,0.08)", borderTop: `1px solid ${C.border}` }}>
@@ -1651,6 +1688,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
                 <div style={{ padding: "8px 24px 28px" }}>
                   <ViagemDetalle
                     viagem={viagemSelecionada}
+                    viagens={viagens}
                     sucursal={viagemSelecionada.sucursal || sucursalDelVehiculo(viagemSelecionada.placa)}
                     pedidos={pedidos} setPedidos={setPedidos}
                     custos={custos} setCustos={setCustos}
@@ -1671,7 +1709,7 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
 }
 
 /* Panel embebido: pedidos, costos y resultado del viaje, editables sin salir de la pantalla de Viajes. */
-function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCustos, abastecimentos, tarifas, veiculos, onEdit, onToggleEstado }) {
+function ViagemDetalle({ viagem, viagens, sucursal, pedidos, setPedidos, custos, setCustos, abastecimentos, tarifas, veiculos, onEdit, onToggleEstado }) {
   const [tab, setTab] = useState("datos");
   const [pedidoRows, setPedidoRows] = useState([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
   const [custoRows, setCustoRows] = useState([emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow()]);
@@ -1680,7 +1718,6 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
 
   const pedidosDoViagem = pedidos.filter((p) => p.viagemId === viagem.id);
   const custosDoViagem = custos.filter((c) => c.viagemId === viagem.id);
-  const abastecimentosDoViagem = (abastecimentos || []).filter((a) => a.viagemId === viagem.id);
   const vehiculo = (veiculos || []).find((x) => x.placa === viagem.placa);
   const totalPedidos = pedidosDoViagem.reduce((s, p) => s + Number(p.valorFatura || 0), 0);
 
@@ -1718,8 +1755,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
   const removeCusto = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmCustoId(null); };
 
   const fleteTotal = pedidosDoViagem.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
-  const combustibleValor = abastecimentosDoViagem.reduce((s, a) => s + Number(a.valor || 0), 0);
-  const combustibleLitros = abastecimentosDoViagem.reduce((s, a) => s + Number(a.litros || 0), 0);
+  const { valor: combustibleValor, litros: combustibleLitros } = combustibleDelViaje(viagem, viagens || [], abastecimentos || []);
   const custoTotal = custosDoViagem.reduce((s, c) => s + Number(c.valor || 0), 0) + combustibleValor;
   const lucro = fleteTotal - custoTotal;
   const margen = fleteTotal > 0 ? (lucro / fleteTotal) * 100 : 0;
@@ -1944,7 +1980,7 @@ function ViagemDetalle({ viagem, sucursal, pedidos, setPedidos, custos, setCusto
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
               <KPI icon={Receipt} label="Flete total" value={fmtMoney(fleteTotal)} />
               <KPI icon={DollarSign} label="Costo total" value={fmtMoney(custoTotal)} />
-              <KPI icon={Fuel} label="Combustible" value={combustibleLitros ? `${fmtMoney(combustibleValor)} (${fmtNum(combustibleLitros)} L)` : fmtMoney(combustibleValor)} />
+              <KPI icon={Fuel} label="Combustible" value={combustibleLitros ? `${fmtMoney(combustibleValor)} (${combustibleLitros.toFixed(1)} L)` : fmtMoney(combustibleValor)} />
               <KPI icon={Gauge} label="Margen de lucro" value={`${margen.toFixed(1)}%`} />
             </div>
           </div>
