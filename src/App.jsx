@@ -1634,29 +1634,33 @@ function ViagensPage({ viagens, setViagens, veiculos, setVeiculos, motoristas, s
           <>
             <div
               onClick={() => setExpandedId(null)}
-              style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,0.45)", zIndex: 40 }}
-            />
-            <div style={{
-              position: "fixed", top: 0, right: 0, height: "100vh", width: "min(680px, 100vw)",
-              background: C.bg, zIndex: 41, overflowY: "auto", boxShadow: "-8px 0 24px rgba(0,0,0,0.15)",
-            }}>
-              <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 16px 0" }}>
-                <button onClick={() => setExpandedId(null)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 8, color: C.muted, cursor: "pointer" }}>
-                  <X size={18} />
-                </button>
-              </div>
-              <div style={{ padding: "8px 20px 24px" }}>
-                <ViagemDetalle
-                  viagem={viagemSelecionada}
-                  sucursal={viagemSelecionada.sucursal || sucursalDelVehiculo(viagemSelecionada.placa)}
-                  pedidos={pedidos} setPedidos={setPedidos}
-                  custos={custos} setCustos={setCustos}
-                  abastecimentos={abastecimentos}
-                  veiculos={veiculos}
-                  tarifas={tarifas}
-                  onEdit={(v) => setForm({ ...v })}
-                  onToggleEstado={toggleEstado}
-                />
+              style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,0.45)", zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  background: C.bg, borderRadius: 14, width: "min(760px, 100%)", maxHeight: "90vh",
+                  overflowY: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.25)", position: "relative",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "flex-end", padding: "14px 16px 0", position: "sticky", top: 0, background: C.bg, zIndex: 1 }}>
+                  <button onClick={() => setExpandedId(null)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 8, color: C.muted, cursor: "pointer" }}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div style={{ padding: "8px 24px 28px" }}>
+                  <ViagemDetalle
+                    viagem={viagemSelecionada}
+                    sucursal={viagemSelecionada.sucursal || sucursalDelVehiculo(viagemSelecionada.placa)}
+                    pedidos={pedidos} setPedidos={setPedidos}
+                    custos={custos} setCustos={setCustos}
+                    abastecimentos={abastecimentos}
+                    veiculos={veiculos}
+                    tarifas={tarifas}
+                    onEdit={(v) => setForm({ ...v })}
+                    onToggleEstado={toggleEstado}
+                  />
+                </div>
               </div>
             </div>
           </>
