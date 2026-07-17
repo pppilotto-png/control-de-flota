@@ -337,6 +337,7 @@ export default function App() {
   const [sucursales, setSucursales] = useState(["Casa Matriz"]);
   const [chamados, setChamados] = useState([]);
   const [avisoDinatranOculto, setAvisoDinatranOculto] = useState(false);
+  const [mostrarBorrarTodo, setMostrarBorrarTodo] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -380,6 +381,20 @@ export default function App() {
     setter(data);
     saveKey(key, data);
   }, []);
+
+  const borrarTodosLosDatos = () => {
+    persist("veiculos", setVeiculos, []);
+    persist("motoristas", setMotoristas, []);
+    persist("viagens", setViagens, []);
+    persist("custos", setCustos, []);
+    persist("manutencoes", setManutencoes, []);
+    persist("abastecimentos", setAbastecimentos, []);
+    persist("pedidos", setPedidos, []);
+    persist("chamados", setChamados, []);
+    persist("sucursales", setSucursales, ["Casa Matriz"]);
+    persist("tarifasFrete", setTarifas, DEFAULT_TARIFAS);
+    setMostrarBorrarTodo(false);
+  };
 
   const navGroups = [
     {
@@ -505,6 +520,12 @@ export default function App() {
           ))}
         </div>
         <div style={{ padding: 14, borderTop: "1px solid #2A342E" }}>
+          <button
+            onClick={() => setMostrarBorrarTodo(true)}
+            style={{ background: "none", border: "none", color: "#8A5252", fontSize: 10.5, cursor: "pointer", padding: 0, marginBottom: 10, textDecoration: "underline" }}
+          >
+            Borrar todos los datos
+          </button>
           <div style={{ fontSize: 10, color: "#6E796F" }}>
             Los datos se guardan automáticamente en esta app.
           </div>
@@ -561,6 +582,41 @@ export default function App() {
           />
         )}
       </div>
+      </div>
+
+      {mostrarBorrarTodo && (
+        <BorrarTodoModal onCancel={() => setMostrarBorrarTodo(false)} onConfirmar={borrarTodosLosDatos} />
+      )}
+    </div>
+  );
+}
+
+function BorrarTodoModal({ onCancel, onConfirmar }) {
+  const [texto, setTexto] = useState("");
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,0.55)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.surface, borderRadius: 12, padding: 26, width: "min(420px, 100%)", border: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <AlertTriangle size={20} color={C.red} />
+          <div style={{ fontFamily: "'Oswald',sans-serif", fontWeight: 700, fontSize: 17, color: C.red, textTransform: "uppercase" }}>Borrar todos los datos</div>
+        </div>
+        <div style={{ fontSize: 13, color: C.text, marginBottom: 14, lineHeight: 1.5 }}>
+          Esto va a eliminar <b>permanentemente</b> todos los vehículos, choferes, viajes, pedidos, costos, combustible,
+          mantenimiento y chamados. No se puede deshacer.
+        </div>
+        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 6 }}>
+          Escribí <b>BORRAR</b> para confirmar:
+        </div>
+        <input style={inputStyle} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="BORRAR" autoFocus />
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <Button
+            onClick={onConfirmar}
+            style={{ background: C.red, opacity: texto.trim().toUpperCase() === "BORRAR" ? 1 : 0.4, pointerEvents: texto.trim().toUpperCase() === "BORRAR" ? "auto" : "none" }}
+          >
+            <Trash2 size={14} /> Borrar todo definitivamente
+          </Button>
+          <Button variant="ghost" onClick={onCancel}><X size={14} /> Cancelar</Button>
+        </div>
       </div>
     </div>
   );
@@ -1715,6 +1771,10 @@ function ViagemDetalle({ viagem, viagens, sucursal, pedidos, setPedidos, custos,
   const [custoRows, setCustoRows] = useState([emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow()]);
   const [confirmPedidoId, setConfirmPedidoId] = useState(null);
   const [confirmCustoId, setConfirmCustoId] = useState(null);
+  const [editPedidoId, setEditPedidoId] = useState(null);
+  const [editPedidoRow, setEditPedidoRow] = useState(null);
+  const [editCustoId, setEditCustoId] = useState(null);
+  const [editCustoRow, setEditCustoRow] = useState(null);
 
   const pedidosDoViagem = pedidos.filter((p) => p.viagemId === viagem.id);
   const custosDoViagem = custos.filter((c) => c.viagemId === viagem.id);
@@ -1732,6 +1792,13 @@ function ViagemDetalle({ viagem, viagens, sucursal, pedidos, setPedidos, custos,
     setPedidoRows([emptyPedidoRow(), emptyPedidoRow(), emptyPedidoRow()]);
   };
   const removePedido = (id) => { setPedidos(pedidos.filter((p) => p.id !== id)); setConfirmPedidoId(null); };
+  const openEditPedido = (p) => { setEditPedidoId(p.id); setEditPedidoRow({ ...p }); };
+  const saveEditPedido = (e) => {
+    e.preventDefault();
+    setPedidos(pedidos.map((p) => (p.id === editPedidoId ? { ...editPedidoRow, id: editPedidoId } : p)));
+    setEditPedidoId(null);
+    setEditPedidoRow(null);
+  };
 
   const updateCustoRow = (idx, field, value) => setCustoRows(custoRows.map((r, i) => {
     if (i !== idx) return r;
@@ -1753,6 +1820,22 @@ function ViagemDetalle({ viagem, viagens, sucursal, pedidos, setPedidos, custos,
     setCustoRows([emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow(), emptyCustoRow()]);
   };
   const removeCusto = (id) => { setCustos(custos.filter((c) => c.id !== id)); setConfirmCustoId(null); };
+  const openEditCusto = (c) => { setEditCustoId(c.id); setEditCustoRow({ ...c, cantidad: c.cantidad || "1", valorUnitario: c.valorUnitario || c.valor || "" }); };
+  const updateEditCustoRow = (field, value) => {
+    const actualizado = { ...editCustoRow, [field]: value };
+    if (field === "cantidad" || field === "valorUnitario") {
+      const cant = Number(field === "cantidad" ? value : editCustoRow.cantidad) || 0;
+      const vu = Number(field === "valorUnitario" ? value : editCustoRow.valorUnitario) || 0;
+      actualizado.valor = cant && vu ? String(cant * vu) : "";
+    }
+    setEditCustoRow(actualizado);
+  };
+  const saveEditCusto = (e) => {
+    e.preventDefault();
+    setCustos(custos.map((c) => (c.id === editCustoId ? { ...editCustoRow, id: editCustoId } : c)));
+    setEditCustoId(null);
+    setEditCustoRow(null);
+  };
 
   const fleteTotal = pedidosDoViagem.reduce((s, p) => s + freightRevenue(p, tarifas), 0);
   const { valor: combustibleValor, litros: combustibleLitros } = combustibleDelViaje(viagem, viagens || [], abastecimentos || []);
@@ -1833,14 +1916,63 @@ function ViagemDetalle({ viagem, viagens, sucursal, pedidos, setPedidos, custos,
 
             {pedidosDoViagem.length > 0 && (
               <Card style={{ padding: 0, marginBottom: 14 }}>
-                <Table
-                  headers={["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto", ""]}
-                  rows={pedidosDoViagem.map((p) => [
-                    p.fatura || "—", p.pedido || "—", p.cliente || "—", p.tipoFlete || "—",
-                    fmtMoney(p.valorFatura),
-                    <RowActions onEdit={() => {}} onDelete={() => setConfirmPedidoId(p.id)} confirming={confirmPedidoId === p.id} onConfirm={() => removePedido(p.id)} onCancel={() => setConfirmPedidoId(null)} />,
-                  ])}
-                />
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                    <thead>
+                      <tr>
+                        {["Factura", "Pedido", "Cliente", "Tipo de flete", "Monto", ""].map((h, i) => (
+                          <th key={i} style={{ textAlign: "left", padding: "10px 12px", color: C.muted, fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pedidosDoViagem.map((p) => (
+                        <React.Fragment key={p.id}>
+                          <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                            <td style={{ padding: "9px 12px" }}>{p.fatura || "—"}</td>
+                            <td style={{ padding: "9px 12px" }}>{p.pedido || "—"}</td>
+                            <td style={{ padding: "9px 12px" }}>{p.cliente || "—"}</td>
+                            <td style={{ padding: "9px 12px" }}>{p.tipoFlete || "—"}</td>
+                            <td style={{ padding: "9px 12px" }}>{fmtMoney(p.valorFatura)}</td>
+                            <td style={{ padding: "9px 12px" }}>
+                              <RowActions onEdit={() => openEditPedido(p)} onDelete={() => setConfirmPedidoId(p.id)} confirming={confirmPedidoId === p.id} onConfirm={() => removePedido(p.id)} onCancel={() => setConfirmPedidoId(null)} />
+                            </td>
+                          </tr>
+                          {editPedidoId === p.id && (
+                            <tr>
+                              <td colSpan={6} style={{ padding: 14, background: C.raised, borderBottom: `1px solid ${C.border}` }}>
+                                <form onSubmit={saveEditPedido} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, alignItems: "flex-end" }}>
+                                  <Field label="Factura">
+                                    <input style={inputStyle} value={editPedidoRow.fatura} onChange={(e) => setEditPedidoRow({ ...editPedidoRow, fatura: e.target.value })} />
+                                  </Field>
+                                  <Field label="Pedido">
+                                    <input style={inputStyle} value={editPedidoRow.pedido} onChange={(e) => setEditPedidoRow({ ...editPedidoRow, pedido: e.target.value })} />
+                                  </Field>
+                                  <Field label="Cliente">
+                                    <input style={inputStyle} value={editPedidoRow.cliente} onChange={(e) => setEditPedidoRow({ ...editPedidoRow, cliente: e.target.value })} />
+                                  </Field>
+                                  <Field label="Valor factura (₲)">
+                                    <input type="number" style={inputStyle} value={editPedidoRow.valorFatura} onChange={(e) => setEditPedidoRow({ ...editPedidoRow, valorFatura: e.target.value })} />
+                                  </Field>
+                                  <Field label="Tipo de flete">
+                                    <select style={inputStyle} value={editPedidoRow.tipoFlete} onChange={(e) => setEditPedidoRow({ ...editPedidoRow, tipoFlete: e.target.value })}>
+                                      <option value="">Seleccione</option>
+                                      {TIPOS_FRETE.map((t) => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                  </Field>
+                                  <div style={{ display: "flex", gap: 8 }}>
+                                    <Button type="submit"><Check size={14} /> Guardar</Button>
+                                    <Button variant="ghost" onClick={() => { setEditPedidoId(null); setEditPedidoRow(null); }}><X size={14} /> Cancelar</Button>
+                                  </div>
+                                </form>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </Card>
             )}
 
@@ -1906,13 +2038,67 @@ function ViagemDetalle({ viagem, viagens, sucursal, pedidos, setPedidos, custos,
             </div>
             {custosDoViagem.length > 0 && (
               <Card style={{ padding: 0, marginBottom: 14 }}>
-                <Table
-                  headers={["Categoría", "Cantidad", "Valor unitario", "Total", "Fecha", "Obs.", ""]}
-                  rows={custosDoViagem.map((c) => [
-                    c.tipo, c.cantidad || "1", fmtMoney(c.valorUnitario || c.valor), fmtMoney(c.valor), c.data ? c.data.split("-").reverse().join("/") : "—", c.obs || "—",
-                    <RowActions onEdit={() => {}} onDelete={() => setConfirmCustoId(c.id)} confirming={confirmCustoId === c.id} onConfirm={() => removeCusto(c.id)} onCancel={() => setConfirmCustoId(null)} />,
-                  ])}
-                />
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                    <thead>
+                      <tr>
+                        {["Categoría", "Cantidad", "Valor unitario", "Total", "Fecha", "Obs.", ""].map((h, i) => (
+                          <th key={i} style={{ textAlign: "left", padding: "10px 12px", color: C.muted, fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {custosDoViagem.map((c) => (
+                        <React.Fragment key={c.id}>
+                          <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                            <td style={{ padding: "9px 12px" }}>{c.tipo}</td>
+                            <td style={{ padding: "9px 12px" }}>{c.cantidad || "1"}</td>
+                            <td style={{ padding: "9px 12px" }}>{fmtMoney(c.valorUnitario || c.valor)}</td>
+                            <td style={{ padding: "9px 12px" }}>{fmtMoney(c.valor)}</td>
+                            <td style={{ padding: "9px 12px" }}>{c.data ? c.data.split("-").reverse().join("/") : "—"}</td>
+                            <td style={{ padding: "9px 12px" }}>{c.obs || "—"}</td>
+                            <td style={{ padding: "9px 12px" }}>
+                              <RowActions onEdit={() => openEditCusto(c)} onDelete={() => setConfirmCustoId(c.id)} confirming={confirmCustoId === c.id} onConfirm={() => removeCusto(c.id)} onCancel={() => setConfirmCustoId(null)} />
+                            </td>
+                          </tr>
+                          {editCustoId === c.id && (
+                            <tr>
+                              <td colSpan={7} style={{ padding: 14, background: C.raised, borderBottom: `1px solid ${C.border}` }}>
+                                <form onSubmit={saveEditCusto} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, alignItems: "flex-end" }}>
+                                  <Field label="Categoría">
+                                    <select style={inputStyle} value={editCustoRow.tipo} onChange={(e) => setEditCustoRow({ ...editCustoRow, tipo: e.target.value })}>
+                                      <option value="">Seleccione</option>
+                                      {TIPOS_CUSTO.map((t) => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                  </Field>
+                                  <Field label="Cantidad">
+                                    <input type="number" style={inputStyle} value={editCustoRow.cantidad ?? "1"} onChange={(e) => updateEditCustoRow("cantidad", e.target.value)} />
+                                  </Field>
+                                  <Field label="Valor unitario (₲)">
+                                    <input type="number" style={inputStyle} value={editCustoRow.valorUnitario ?? ""} onChange={(e) => updateEditCustoRow("valorUnitario", e.target.value)} />
+                                  </Field>
+                                  <Field label="Total (₲)">
+                                    <input style={{ ...inputStyle, background: C.bg, color: C.muted }} value={editCustoRow.valor ? fmtMoney(editCustoRow.valor) : ""} disabled readOnly />
+                                  </Field>
+                                  <Field label="Fecha">
+                                    <input type="date" style={inputStyle} value={editCustoRow.data} onChange={(e) => setEditCustoRow({ ...editCustoRow, data: e.target.value })} />
+                                  </Field>
+                                  <Field label="Observación">
+                                    <input style={inputStyle} value={editCustoRow.obs} onChange={(e) => setEditCustoRow({ ...editCustoRow, obs: e.target.value })} />
+                                  </Field>
+                                  <div style={{ display: "flex", gap: 8 }}>
+                                    <Button type="submit"><Check size={14} /> Guardar</Button>
+                                    <Button variant="ghost" onClick={() => { setEditCustoId(null); setEditCustoRow(null); }}><X size={14} /> Cancelar</Button>
+                                  </div>
+                                </form>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </Card>
             )}
             <Card style={{ padding: 0, overflow: "hidden" }}>
