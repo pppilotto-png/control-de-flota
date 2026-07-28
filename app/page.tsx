@@ -1549,8 +1549,6 @@ function OrdersModule({ trips, allTrips, setTrips, rates, setRates, onEdit, onTo
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
-      const existingOrders = new Set(allTrips.flatMap((trip) => trip.orders.map((order) => order.order.trim().toUpperCase())));
-      const seen = new Set<string>();
       const parsed = records.map((record, index): ImportedOrder => {
         const row = index + 2;
         const tripId = Number(pick(record, ["viaje", "numeroviaje", "nviaje", "viajeid"]));
@@ -1566,9 +1564,6 @@ function OrdersModule({ trips, allTrips, setTrips, rates, setRates, onEdit, onTo
         if (!client) errors.push("Falta cliente");
         if (amount <= 0) errors.push("Valor inválido");
         if (!freightType) errors.push("Tipo de flete inválido");
-        const orderKey = order.toUpperCase();
-        if (orderKey && (existingOrders.has(orderKey) || seen.has(orderKey))) errors.push("Pedido duplicado");
-        if (orderKey) seen.add(orderKey);
         return { row, tripId, invoice, order, client, amount, freightType: freightType ?? "Local", error: errors.join(" · ") || undefined };
       });
       setImportRows(parsed);
@@ -1612,12 +1607,10 @@ function OrdersModule({ trips, allTrips, setTrips, rates, setRates, onEdit, onTo
     const amount = Number(form.get("amount"));
     const freightType = String(form.get("freightType") ?? "") as FreightType;
     const trip = allTrips.find((item) => item.id === tripId);
-    const duplicated = allTrips.some((item) => item.orders.some((existing) => existing.order.trim().toUpperCase() === order.toUpperCase()));
     if (!trip) return setNewOrderError("Seleccione un viaje válido.");
     if (!invoice || !order || !client) return setNewOrderError("Complete factura, pedido y cliente.");
     if (!Number.isFinite(amount) || amount <= 0) return setNewOrderError("Ingrese un valor mayor que cero.");
     if (!freightTypes.includes(freightType)) return setNewOrderError("Seleccione un tipo de flete válido.");
-    if (duplicated) return setNewOrderError("Ya existe un pedido con este número.");
     setTrips(allTrips.map((item) => item.id === tripId ? { ...item, orders: [...item.orders, { invoice, order, client, amount: Math.round(amount), freightType }] } : item));
     setNewOrderOpen(false);
     setNewOrderError("");
