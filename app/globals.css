@@ -239,3 +239,35 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
   .bonus-check{min-width:0}.bonus-check input{display:none}
   .sidebar,.topbar,.filter-panel,.filter-summary{display:none!important}
 }
+
+/* Relatório mensal individual de bonificações */
+.individual-bonus-report{display:none}.team-print-button{white-space:nowrap}
+@media print{
+  @page{size:A4 portrait;margin:9mm}
+  .bonus-module>*:not(.individual-bonus-report){display:none!important}
+  .individual-bonus-report,.individual-bonus-report *{visibility:visible}
+  .individual-bonus-report{display:block;position:absolute;inset:0;width:100%;font-family:Arial,Helvetica,sans-serif;color:#18211f;background:#fff;font-size:10px;line-height:1.25}
+  .ibr-header{border-bottom:2px solid #08665c;padding:4px 0 10px;text-align:center}
+  .ibr-header h1{margin:0 0 10px;font-size:22px;letter-spacing:.01em}
+  .ibr-header div{display:grid;grid-template-columns:repeat(3,1fr);text-align:left;font-size:10px}
+  .ibr-header div span{padding:0 14px;border-right:1px solid #cfd8d5}.ibr-header div span:last-child{border:0}
+  .ibr-section{margin-top:11px;break-inside:avoid}
+  .ibr-section h2{display:flex;align-items:center;gap:8px;margin:0 0 7px;padding-bottom:4px;border-bottom:1.5px solid #08665c;color:#08665c;font-size:13px}
+  .ibr-section h2 b{display:grid;place-items:center;width:22px;height:22px;background:#08665c;color:#fff;font-size:12px}
+  .ibr-section h3{margin:0 0 6px;font-size:11px}.ibr-section h3 span{font-weight:400}
+  .ibr-indicators{display:grid;grid-template-columns:1.15fr .9fr;gap:18px;align-items:stretch}
+  .ibr-indicators table,.ibr-bonus-table,.ibr-summary{width:100%;border-collapse:collapse}
+  .ibr-indicators td,.ibr-bonus-table th,.ibr-bonus-table td,.ibr-summary td{border:1px solid #ccd5d2;padding:5px 8px}
+  .ibr-indicators td:last-child{width:40%;text-align:center}
+  .ibr-highlight{display:flex;align-items:center;justify-content:center;padding:12px;border:1px solid #b8d7c1;border-radius:9px;background:#eaf6e9;color:#08665c;text-align:center;font-size:15px;font-weight:800;line-height:1.35}
+  .ibr-highlight.negative{border-color:#e4c1bc;background:#fbeeed;color:#9a372e}
+  .ibr-bonus-table thead th{background:#08665c;color:#fff;text-align:center;font-size:10px}
+  .ibr-bonus-table th:first-child,.ibr-bonus-table td:first-child{text-align:left}
+  .ibr-bonus-table td:nth-child(2){text-align:center}.ibr-bonus-table td:last-child{width:23%;text-align:right}
+  .ibr-bonus-table em{display:inline-block;padding:2px 7px;border-radius:5px;background:#eaf6e9;color:#08665c;font-style:normal;font-weight:700}
+  .ibr-bonus-table .total td,.ibr-summary .total td{font-weight:800}
+  .ibr-summary td:last-child{width:45%;text-align:right}
+  .ibr-observation{margin:0;padding:9px 11px;border:1px solid #ccd5d2;border-radius:5px;font-size:10px;line-height:1.4}
+  .ibr-empty{padding:10px;border:1px dashed #ccd5d2;color:#687773}
+  .individual-bonus-report footer{margin-top:12px;padding-top:7px;border-top:1px solid #9aa7a3;text-align:center;font-size:9px;color:#5c6965}
+}
