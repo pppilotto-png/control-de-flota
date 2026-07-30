@@ -1436,7 +1436,7 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
           return <article key={driver.id}><div><strong>{driver.name}</strong><small>Motorista</small></div><span>→</span><div><strong>{assignment?.helper ?? "Sin ayudante"}</strong><small>Ajudante</small></div>{assignment ? <button className="delete-action" onClick={() => { setHelperAssignments(helperAssignments.filter((item) => item.driver !== driver.name)); notify(`Vínculo de ${driver.name} eliminado.`); }}>Eliminar</button> : <button className="edit-action" onClick={() => { setHelperDriver(driver.name); setHelperName(""); }}>Agregar</button>}</article>;
         })}</div>
         <p className="settings-note">La categoría Local o Nacional del ayudante se determina automáticamente por las operaciones del motorista en cada mes.</p>
-      </>}
+      </div>}
       {section === "rates" && <div className="rates-settings">
         <div className="settings-heading"><div><p className="eyebrow">Reglas de cálculo</p><h2>Tipos de flete</h2><p>Defina el porcentaje aplicado al valor de cada pedido.</p></div><div className="branch-count"><strong>{freightTypes.length}</strong><span>tipos</span></div></div>
         <div className="rate-grid settings-rate-grid">{freightTypes.map((type) => <label key={type}>{type}<span><input type="number" min="0" max="100" step="0.01" value={rates[type]} onChange={(event) => setRates({ ...rates, [type]: Number(event.target.value) })}/>%</span><small>{money.format(10000000 * rates[type] / 100)} por cada ₲ 10.000.000</small></label>)}</div>
