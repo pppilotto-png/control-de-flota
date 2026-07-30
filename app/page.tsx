@@ -32,7 +32,9 @@ type ErpUser = { id: number; name: string; email: string; role: UserRole; active
 type AuditEntry = { id: string; at: string; user: string; action: string; module: string; detail: string };
 type TrashEntry = { id: string; deletedAt: string; deletedBy: string; collection: string; label: string; record: Record<string, unknown> };
 type BonusReview = { month: string; driver: string; noDamageReturns: boolean };
-type ErpSnapshot = { version: 1; exportedAt: string; trips: Trip[]; tripCosts: TripCost[]; fuelEntries: FuelEntry[]; maintenance: Maintenance[]; serviceRequests: ServiceRequest[]; documents: FleetDocument[]; branches: Branch[]; vehicles: Vehicle[]; drivers: Driver[]; freightRates: FreightRates; users?: ErpUser[]; auditLog?: AuditEntry[]; trash?: TrashEntry[]; bonusReviews?: BonusReview[] };
+type HelperAssignment = { driver: string; helper: string };
+type HelperBonusReview = { month: string; driver: string; helper: string; noDamageReturns: boolean };
+type ErpSnapshot = { version: 1; exportedAt: string; trips: Trip[]; tripCosts: TripCost[]; fuelEntries: FuelEntry[]; maintenance: Maintenance[]; serviceRequests: ServiceRequest[]; documents: FleetDocument[]; branches: Branch[]; vehicles: Vehicle[]; drivers: Driver[]; freightRates: FreightRates; users?: ErpUser[]; auditLog?: AuditEntry[]; trash?: TrashEntry[]; bonusReviews?: BonusReview[]; helperAssignments?: HelperAssignment[]; helperBonusReviews?: HelperBonusReview[] };
 
 const freightTypes: FreightType[] = ["Local", "Nacional", "Dobro", "Devolución", "Remisión"];
 const initialRates: FreightRates = { Local: 5, Nacional: 8, Dobro: 10, Devolución: 5, Remisión: 4 };
@@ -122,6 +124,8 @@ export default function Home() {
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [trash, setTrash] = useState<TrashEntry[]>([]);
   const [bonusReviews, setBonusReviews] = useState<BonusReview[]>([]);
+  const [helperAssignments, setHelperAssignments] = useState<HelperAssignment[]>([]);
+  const [helperBonusReviews, setHelperBonusReviews] = useState<HelperBonusReview[]>([]);
   const [session, setSession] = useState<{ name: string; email: string; role: UserRole }>({ name: "Administrador", email: "admin@example.invalid", role: "Administrador" });
   const [costModal, setCostModal] = useState(false);
   const [fuelModal, setFuelModal] = useState(false);
@@ -180,6 +184,8 @@ export default function Home() {
           setAuditLog(state.auditLog ?? []);
           setTrash(state.trash ?? []);
           setBonusReviews(state.bonusReviews ?? []);
+          setHelperAssignments(state.helperAssignments ?? []);
+          setHelperBonusReviews(state.helperBonusReviews ?? []);
         }
         if (state?.session) setSession(state.session.role === "Financiero" ? { ...state.session, role: "Consulta" } : state.session);
         setDataReady(true);
@@ -202,7 +208,7 @@ export default function Home() {
       fetch("/api/state", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews }),
+        body: JSON.stringify({ trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews, helperAssignments, helperBonusReviews }),
       })
         .then((response) => {
           if (!response.ok) throw new Error();
@@ -213,7 +219,7 @@ export default function Home() {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [dataReady, trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews]);
+  }, [dataReady, trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews, helperAssignments, helperBonusReviews]);
   useEffect(() => {
     if (active !== "requests" || !dataReady) return;
     const refresh = () => fetch("/api/chamados").then((response) => response.ok ? response.json() : Promise.reject()).then(({ requests }) => setServiceRequests(requests ?? [])).catch(() => undefined);
@@ -247,7 +253,7 @@ export default function Home() {
   const activeVehicles = vehicles.filter((vehicle) => vehicle.active);
   const activeDrivers = drivers.filter((driver) => driver.active);
   const formatFilterDate = (value: string) => value ? new Intl.DateTimeFormat("es-PY").format(new Date(`${value}T12:00:00`)) : "Sin límite";
-  const snapshot: ErpSnapshot = { version: 1, exportedAt: new Date().toISOString(), trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews };
+  const snapshot: ErpSnapshot = { version: 1, exportedAt: new Date().toISOString(), trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews, helperAssignments, helperBonusReviews };
 
   function restoreSnapshot(restored: ErpSnapshot) {
     setTrips(restored.trips);
@@ -264,6 +270,8 @@ export default function Home() {
     setAuditLog(restored.auditLog ?? []);
     setTrash(restored.trash ?? []);
     setBonusReviews(restored.bonusReviews ?? []);
+    setHelperAssignments(restored.helperAssignments ?? []);
+    setHelperBonusReviews(restored.helperBonusReviews ?? []);
     setToast("Copia restaurada correctamente. Los datos se están guardando.");
     setTimeout(() => setToast(""), 4200);
   }
@@ -474,7 +482,7 @@ export default function Home() {
           {operationalAlerts.length > 8 && <p className="alerts-more">Mostrando 8 de {operationalAlerts.length} alertas. Abra cada módulo para consultar todos.</p>}
         </section>
         <TripTable trips={filteredTrips} rates={freightRates} onAll={() => setActive("trips")} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip}/>
-      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} rates={freightRates} costs={tripCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email}/> : null}
+      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} rates={freightRates} costs={tripCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
     </section>
     {modal && <div className="modal-backdrop" onMouseDown={() => setModal(false)}><div className="modal trip-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setModal(false); setEditingTrip(null); setTripFormError(""); }} aria-label="Cerrar">×</button><p className="eyebrow">Operación</p><h2 id="modal-title">{editingTrip ? `Editar viaje N.º ${editingTrip.id}` : "Nuevo viaje"}</h2><p className="modal-intro">Registre los datos del viaje. Los pedidos y costos son opcionales y pueden agregarse después.</p>
@@ -658,12 +666,15 @@ function FuelReport({ entries, cycles, openCycles, onClose }: { entries: FuelEnt
 }
 
 
-function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, readOnly }: {
+function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helperAssignments, helperReviews, setHelperReviews, readOnly }: {
   trips: Trip[];
   fuelEntries: FuelEntry[];
   cycles: FuelCycle[];
   reviews: BonusReview[];
   setReviews: (reviews: BonusReview[]) => void;
+  helperAssignments: HelperAssignment[];
+  helperReviews: HelperBonusReview[];
+  setHelperReviews: (reviews: HelperBonusReview[]) => void;
   readOnly: boolean;
 }) {
   const pilotMonths = [
@@ -702,28 +713,53 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, readOn
     const damageBonus = review?.noDamageReturns ? (national ? 150000 : 100000) : 0;
     return { driver, category, trips: driverTrips.length, vehicles: vehicles.join(", "), consumption, target, score, fuelBonus, unloadingBonus, damageBonus, total: fuelBonus + unloadingBonus + damageBonus, reviewed: Boolean(review?.noDamageReturns) };
   });
-  const total = rows.reduce((sum, row) => sum + row.total, 0);
+  const helperRows = rows.flatMap((row) => {
+    const assignment = helperAssignments.find((item) => item.driver === row.driver);
+    if (!assignment) return [];
+    const review = helperReviews.find((item) => item.month === month && item.driver === row.driver && item.helper === assignment.helper);
+    const unloadingBonus = row.trips > 0 ? (row.category === "Nacional" ? 250000 : 200000) : 0;
+    const damageBonus = review?.noDamageReturns ? (row.category === "Nacional" ? 200000 : 150000) : 0;
+    return [{ driver: row.driver, helper: assignment.helper, category: row.category, trips: row.trips, unloadingBonus, damageBonus, total: unloadingBonus + damageBonus, reviewed: Boolean(review?.noDamageReturns) }];
+  });
+  const driverTotal = rows.reduce((sum, row) => sum + row.total, 0);
+  const helperTotal = helperRows.reduce((sum, row) => sum + row.total, 0);
   const updateDamageReview = (driver: string, checked: boolean) => {
     const next = reviews.filter((item) => !(item.month === month && item.driver === driver));
     setReviews([...next, { month, driver, noDamageReturns: checked }]);
   };
+  const updateHelperReview = (driver: string, helper: string, checked: boolean) => {
+    const next = helperReviews.filter((item) => !(item.month === month && item.driver === driver && item.helper === helper));
+    setHelperReviews([...next, { month, driver, helper, noDamageReturns: checked }]);
+  };
+  const monthLabel = pilotMonths.find((item) => item.value === month)?.label ?? month;
   return <div className="bonus-module">
-    <section className="module-head">
-      <div><p className="eyebrow">Piloto de 3 meses</p><h2>Bonificación de motoristas</h2><p className="muted">Simulación mensual. Los valores no se consideran pagados hasta su aprobación administrativa.</p></div>
-      <label className="bonus-month">Período<select value={month} onChange={(event) => setMonth(event.target.value)}>{pilotMonths.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+    <section className="module-head bonus-screen-head">
+      <div><p className="eyebrow">Piloto de 3 meses</p><h2>Bonificación de motoristas y ajudantes</h2><p className="muted">Simulación mensual. Los valores no se consideran pagados hasta su aprobación administrativa.</p></div>
+      <div className="bonus-head-actions"><label className="bonus-month">Período<select value={month} onChange={(event) => setMonth(event.target.value)}>{pilotMonths.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><button className="secondary bonus-print" onClick={() => window.print()}>Imprimir informe</button></div>
     </section>
+    <header className="bonus-print-header"><p>FreteControl ERP</p><h1>Informe de bonificaciones</h1><span>Período: {monthLabel}</span></header>
     <section className="metrics bonus-metrics">
-      <article><span className="metric-icon">₲</span><div><small>Total simulado</small><strong>{money.format(total)}</strong><em>Incluye los tres criterios</em></div></article>
-      <article><span className="metric-icon positive">✓</span><div><small>Motoristas evaluados</small><strong>{rows.length}</strong><em>{rows.filter((row) => row.reviewed).length} sin averías confirmados</em></div></article>
-      <article><span className="metric-icon neutral">◷</span><div><small>Estado</small><strong>Simulación</strong><em>Inicio: julio de 2026</em></div></article>
+      <article><span className="metric-icon">₲</span><div><small>Total general</small><strong>{money.format(driverTotal + helperTotal)}</strong><em>Motoristas y ajudantes</em></div></article>
+      <article><span className="metric-icon positive">♙</span><div><small>Motoristas</small><strong>{money.format(driverTotal)}</strong><em>{rows.length} evaluados</em></div></article>
+      <article><span className="metric-icon neutral">♧</span><div><small>Ajudantes</small><strong>{money.format(helperTotal)}</strong><em>{helperRows.length} vinculados con actividad</em></div></article>
     </section>
     <section className="table-card bonus-card">
+      <div className="bonus-section-title"><div><p className="eyebrow">Detalle</p><h3>Motoristas</h3></div><strong>{money.format(driverTotal)}</strong></div>
       <div className="bonus-rules"><strong>Reglas:</strong> consumo paga 0%, 50%, 75% o 100% según alcance menos de 90%, 90%, 95% o 100% de la meta. Descarga se paga con al menos un viaje en el mes.</div>
       <div className="table-scroll"><table className="bonus-table"><thead><tr><th>Motorista</th><th>Categoría</th><th>Viajes</th><th>Consumo km/L</th><th>Promedio</th><th>Descarga</th><th>Sin devolución por averías</th><th>Total</th></tr></thead><tbody>
         {rows.map((row) => <tr key={row.driver}><td><strong>{row.driver}</strong><small>{row.vehicles}</small></td><td><span className="status-badge">{row.category}</span></td><td>{row.trips}</td><td><strong>{row.consumption ? row.consumption.toFixed(2) : "Sin ciclo"}</strong><small>Meta {row.target ? row.target.toFixed(2) : "pendiente"}</small></td><td><strong>{money.format(row.fuelBonus)}</strong><small>{Math.round(row.score * 100)}% del máximo</small></td><td><strong>{money.format(row.unloadingBonus)}</strong><small>Elegible</small></td><td><label className="bonus-check"><input type="checkbox" checked={row.reviewed} disabled={readOnly} onChange={(event) => updateDamageReview(row.driver, event.target.checked)}/><span>{row.reviewed ? money.format(row.damageBonus) : "Pendiente de confirmar"}</span></label></td><td><strong>{money.format(row.total)}</strong></td></tr>)}
         {!rows.length && <tr><td colSpan={8}>No hay viajes registrados para este período.</td></tr>}
       </tbody></table></div>
     </section>
+    <section className="table-card bonus-card helper-bonus-card">
+      <div className="bonus-section-title"><div><p className="eyebrow">Detalle</p><h3>Ajudantes</h3></div><strong>{money.format(helperTotal)}</strong></div>
+      <div className="bonus-rules"><strong>Reglas:</strong> Local — descarga Gs 200.000 y sin averías Gs 150.000. Nacional — descarga Gs 250.000 y sin averías Gs 200.000.</div>
+      <div className="table-scroll"><table className="bonus-table helper-bonus-table"><thead><tr><th>Ajudante</th><th>Motorista vinculado</th><th>Categoría</th><th>Viajes</th><th>Descarga</th><th>Sin devolución por averías</th><th>Total</th></tr></thead><tbody>
+        {helperRows.map((row) => <tr key={`${row.driver}-${row.helper}`}><td><strong>{row.helper}</strong></td><td>{row.driver}</td><td><span className="status-badge">{row.category}</span></td><td>{row.trips}</td><td><strong>{money.format(row.unloadingBonus)}</strong></td><td><label className="bonus-check"><input type="checkbox" checked={row.reviewed} disabled={readOnly} onChange={(event) => updateHelperReview(row.driver, row.helper, event.target.checked)}/><span>{row.reviewed ? money.format(row.damageBonus) : "Pendiente de confirmar"}</span></label></td><td><strong>{money.format(row.total)}</strong></td></tr>)}
+        {!helperRows.length && <tr><td colSpan={7}>No hay ajudantes vinculados a motoristas con viajes en este período. Agréguelos en Configuración.</td></tr>}
+      </tbody></table></div>
+    </section>
+    <footer className="bonus-print-footer"><span>FreteControl ERP · Informe de bonificaciones</span><span>Generado el {new Intl.DateTimeFormat("es-PY").format(new Date())}</span></footer>
   </div>;
 }
 
@@ -1195,22 +1231,26 @@ function FleetModule({ vehicles, setVehicles, maintenance, setMaintenance, trips
   </section>;
 }
 
-function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers, setDrivers, rates, setRates, trips, snapshot, onRestore, onToast, users, setUsers, auditLog, trash, setTrash, currentEmail }: {
+function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers, setDrivers, rates, setRates, trips, snapshot, onRestore, onToast, users, setUsers, auditLog, trash, setTrash, currentEmail, helperAssignments, setHelperAssignments }: {
   branches: Branch[]; setBranches: (branches: Branch[]) => void;
   vehicles: Vehicle[]; setVehicles: (vehicles: Vehicle[]) => void;
   drivers: Driver[]; setDrivers: (drivers: Driver[]) => void;
   rates: FreightRates; setRates: (rates: FreightRates) => void;
   trips: Trip[]; snapshot: ErpSnapshot; onRestore: (snapshot: ErpSnapshot) => void; onToast: (message: string) => void;
   users: ErpUser[]; setUsers: (users: ErpUser[]) => void; auditLog: AuditEntry[]; trash: TrashEntry[]; setTrash: (items: TrashEntry[]) => void; currentEmail: string;
+  helperAssignments: HelperAssignment[]; setHelperAssignments: (items: HelperAssignment[]) => void;
 }) {
-  const [section, setSection] = useState<"branches" | "vehicles" | "drivers" | "rates" | "users" | "history" | "trash" | "backup">("branches");
+  const [section, setSection] = useState<"branches" | "vehicles" | "drivers" | "helpers" | "rates" | "users" | "history" | "trash" | "backup">("branches");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState("");
   const [editingUser, setEditingUser] = useState<ErpUser | null>(null);
+  const [helperDriver, setHelperDriver] = useState("");
+  const [helperName, setHelperName] = useState("");
   const labels = {
     branches: ["Sucursales", "Locales operativos", "⌂"],
     vehicles: ["Vehículos", "Chapas disponibles", "▣"],
     drivers: ["Choferes", "Conductores habilitados", "♙"],
+    helpers: ["Ajudantes", "Vínculo con motoristas", "♧"],
     rates: ["Tipos de flete", "Porcentajes y reglas", "%"],
     users: ["Usuarios", "Accesos y perfiles", "♙"],
     history: ["Historial", "Registro de cambios", "↺"],
@@ -1376,6 +1416,27 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
         onToggle={(id) => setDrivers(drivers.map((item) => item.id === id ? { ...item, active: !item.active } : item))}
         onDelete={(id, name, linked) => linked ? notify("No se puede eliminar: el chofer tiene viajes vinculados. Puede desactivarlo.", 4200) : (setDrivers(drivers.filter((item) => item.id !== id)), notify(`Chofer ${name} eliminado.`))}
       />}
+      {section === "helpers" && <div className="helper-settings">
+        <div className="settings-heading"><div><p className="eyebrow">Equipo de entrega</p><h2>Ajudantes por motorista</h2><p>Vincule un ayudante a cada motorista para calcular su bonificación mensual.</p></div><div className="branch-count"><strong>{helperAssignments.length}</strong><span>vinculados</span></div></div>
+        <form className="helper-form" onSubmit={(event) => {
+          event.preventDefault();
+          const helper = helperName.trim();
+          if (!helperDriver || !helper) return notify("Seleccione el motorista e informe el nombre del ayudante.");
+          if (helperAssignments.some((item) => item.helper.toLocaleLowerCase("es-PY") === helper.toLocaleLowerCase("es-PY") && item.driver !== helperDriver)) return notify("Este ayudante ya está vinculado a otro motorista.");
+          setHelperAssignments([...helperAssignments.filter((item) => item.driver !== helperDriver), { driver: helperDriver, helper }]);
+          notify(`Ajudante ${helper} vinculado a ${helperDriver}.`);
+          setHelperDriver(""); setHelperName("");
+        }}>
+          <label>Motorista<select value={helperDriver} onChange={(event) => { const driver = event.target.value; setHelperDriver(driver); setHelperName(helperAssignments.find((item) => item.driver === driver)?.helper ?? ""); }} required><option value="">Seleccione</option>{drivers.filter((driver) => driver.active).map((driver) => <option key={driver.id} value={driver.name}>{driver.name}</option>)}</select></label>
+          <label>Nombre del ayudante<input value={helperName} onChange={(event) => setHelperName(event.target.value)} placeholder="Nombre completo" required/></label>
+          <button className="primary">Guardar vínculo</button>
+        </form>
+        <div className="helper-list">{drivers.map((driver) => {
+          const assignment = helperAssignments.find((item) => item.driver === driver.name);
+          return <article key={driver.id}><div><strong>{driver.name}</strong><small>Motorista</small></div><span>→</span><div><strong>{assignment?.helper ?? "Sin ayudante"}</strong><small>Ajudante</small></div>{assignment ? <button className="delete-action" onClick={() => { setHelperAssignments(helperAssignments.filter((item) => item.driver !== driver.name)); notify(`Vínculo de ${driver.name} eliminado.`); }}>Eliminar</button> : <button className="edit-action" onClick={() => { setHelperDriver(driver.name); setHelperName(""); }}>Agregar</button>}</article>;
+        })}</div>
+        <p className="settings-note">La categoría Local o Nacional del ayudante se determina automáticamente por las operaciones del motorista en cada mes.</p>
+      </>}
       {section === "rates" && <div className="rates-settings">
         <div className="settings-heading"><div><p className="eyebrow">Reglas de cálculo</p><h2>Tipos de flete</h2><p>Defina el porcentaje aplicado al valor de cada pedido.</p></div><div className="branch-count"><strong>{freightTypes.length}</strong><span>tipos</span></div></div>
         <div className="rate-grid settings-rate-grid">{freightTypes.map((type) => <label key={type}>{type}<span><input type="number" min="0" max="100" step="0.01" value={rates[type]} onChange={(event) => setRates({ ...rates, [type]: Number(event.target.value) })}/>%</span><small>{money.format(10000000 * rates[type] / 100)} por cada ₲ 10.000.000</small></label>)}</div>
