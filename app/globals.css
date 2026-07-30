@@ -211,3 +211,31 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
 /* Bonificaciones */
 .bonus-module{display:grid;gap:18px}.bonus-month{display:grid;gap:7px;min-width:190px;font-size:12px;font-weight:700;color:var(--muted)}.bonus-month select{min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}.bonus-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.bonus-card{overflow:hidden}.bonus-rules{padding:13px 16px;border-bottom:1px solid var(--line);background:#f6faf8;color:#52635e;font-size:13px;line-height:1.5}.bonus-table{min-width:1160px}.bonus-table th,.bonus-table td{vertical-align:middle}.bonus-table td:first-child{max-width:270px;white-space:normal}.bonus-table td small{display:block;margin-top:4px;color:var(--muted);font-size:11px}.bonus-check{display:flex;align-items:center;gap:9px;min-width:205px;white-space:normal}.bonus-check input{width:18px;height:18px;accent-color:var(--green)}.bonus-check span{line-height:1.3}.bonus-table .status-badge{white-space:nowrap}
 @media(max-width:900px){.bonus-metrics{grid-template-columns:1fr}.bonus-month{width:100%}.bonus-table{min-width:1000px}}
+
+/* Ajudantes y reporte de bonificaciones */
+.helper-settings{display:grid;gap:18px}.helper-form{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,1fr) auto;gap:12px;align-items:end;padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff}.helper-form label{display:grid;gap:7px;font-size:12px;font-weight:700;color:var(--muted)}.helper-form input,.helper-form select{min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}.helper-list{display:grid;gap:9px}.helper-list article{display:grid;grid-template-columns:minmax(210px,1fr) auto minmax(210px,1fr) auto;gap:14px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:11px;background:#fff}.helper-list article div{display:grid;gap:3px;min-width:0}.helper-list article strong{overflow-wrap:anywhere}.helper-list article small{color:var(--muted)}.bonus-head-actions{display:flex;align-items:end;gap:10px}.bonus-print{min-height:42px}.bonus-print-header,.bonus-print-footer{display:none}.bonus-section-title{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px}.bonus-section-title h3{margin:2px 0 0;font-size:18px}.bonus-section-title>strong{font-size:18px;color:var(--green)}.helper-bonus-table{min-width:980px}.bonus-print-footer{justify-content:space-between;padding-top:14px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
+@media(max-width:900px){.helper-form{grid-template-columns:1fr}.helper-list article{grid-template-columns:1fr auto}.helper-list article>span{display:none}.bonus-head-actions{width:100%;align-items:stretch;flex-direction:column}}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body *{visibility:hidden}
+  .bonus-module,.bonus-module *{visibility:visible}
+  .bonus-module{position:absolute;inset:0;width:100%;gap:10px;color:#111}
+  .bonus-screen-head{display:none}
+  .bonus-print-header{display:block;padding-bottom:10px;border-bottom:2px solid #08665c}
+  .bonus-print-header p{margin:0;color:#08665c;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em}
+  .bonus-print-header h1{margin:4px 0;font-size:22px}
+  .bonus-print-header span{font-size:12px}
+  .bonus-print-footer{display:flex}
+  .bonus-metrics{grid-template-columns:repeat(3,1fr);gap:8px}
+  .bonus-metrics article{padding:10px;box-shadow:none;border:1px solid #dce4e1}
+  .bonus-metrics .metric-icon{display:none}
+  .bonus-card{break-inside:avoid;box-shadow:none;border:1px solid #dce4e1}
+  .bonus-section-title{padding:9px 11px}.bonus-rules{padding:7px 10px;font-size:10px}
+  .table-scroll{overflow:visible}
+  .bonus-table,.helper-bonus-table{min-width:0;width:100%;table-layout:auto;font-size:9px}
+  .bonus-table th,.bonus-table td{padding:6px 5px;white-space:normal}
+  .bonus-table td:first-child{max-width:none}
+  .bonus-table td small{font-size:8px}
+  .bonus-check{min-width:0}.bonus-check input{display:none}
+  .sidebar,.topbar,.filter-panel,.filter-summary{display:none!important}
+}
