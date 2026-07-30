@@ -8,7 +8,7 @@ type Order = { invoice: string; order: string; client: string; amount: number; f
 type ImportedOrder = Order & { row: number; tripId: number; error?: string };
 type FreightRates = Record<FreightType, number>;
 type TripStatus = "En curso" | "En tránsito" | "Cargando" | "Pendiente" | "Finalizado";
-type Trip = { id: number; branch: string; startDate: string; endDate?: string; driver: string; vehicle: string; status: TripStatus; kmInitial: number; kmFinal: number; orders: Order[] };
+type Trip = { id: number; branch: string; startDate: string; endDate?: string; driver: string; helper?: string; vehicle: string; status: TripStatus; kmInitial: number; kmFinal: number; orders: Order[] };
 type ImportedTrip = Trip & { row: number; error?: string };
 type CostType = "Consumición" | "Peaje" | "Tape" | "Hospedaje" | "Reparo/Mantenimiento" | "Otros";
 type TripCost = { id: number; tripId: number; date: string; type: CostType; description: string; quantity: number; unitValue: number };
@@ -135,6 +135,8 @@ export default function Home() {
   const [tripTab, setTripTab] = useState<"data" | "orders" | "costs" | "result">("data");
   const [kmInitialDraft, setKmInitialDraft] = useState(0);
   const [kmFinalDraft, setKmFinalDraft] = useState(0);
+  const [driverDraft, setDriverDraft] = useState("");
+  const [helperDraft, setHelperDraft] = useState("");
   const [toast, setToast] = useState("");
   const [tripFormError, setTripFormError] = useState("");
   const [dataReady, setDataReady] = useState(false);
@@ -363,7 +365,7 @@ export default function Home() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const orders = invoiceRows.map((row) => ({ invoice: String(form.get(`invoice-${row.id}`) || ""), order: String(form.get(`order-${row.id}`) || ""), client: String(form.get(`client-${row.id}`) || ""), amount: Number(form.get(`amount-${row.id}`) || 0), freightType: String(form.get(`freightType-${row.id}`) || "Local") as FreightType })).filter((order) => order.invoice && order.order && order.client && order.amount > 0);
-    const saved: Trip = { id: editingTrip?.id ?? (trips.length ? Math.max(...trips.map((trip) => trip.id)) + 1 : 1), branch: String(form.get("branch") || ""), startDate: String(form.get("startDate") || ""), endDate: String(form.get("endDate") || "") || undefined, driver: String(form.get("driver") || "Por definir"), vehicle: String(form.get("vehicle") || "Por definir"), status: String(form.get("status") || "Pendiente") as TripStatus, kmInitial: Number(form.get("kmInitial") || 0), kmFinal: Number(form.get("kmFinal") || 0), orders };
+    const saved: Trip = { id: editingTrip?.id ?? (trips.length ? Math.max(...trips.map((trip) => trip.id)) + 1 : 1), branch: String(form.get("branch") || ""), startDate: String(form.get("startDate") || ""), endDate: String(form.get("endDate") || "") || undefined, driver: String(form.get("driver") || "Por definir"), helper: String(form.get("helper") || "") || undefined, vehicle: String(form.get("vehicle") || "Por definir"), status: String(form.get("status") || "Pendiente") as TripStatus, kmInitial: Number(form.get("kmInitial") || 0), kmFinal: Number(form.get("kmFinal") || 0), orders };
     if (!saved.branch || !saved.startDate || !saved.driver || !saved.vehicle) {
       setTripTab("data");
       setTripFormError("Complete sucursal, chapa, chofer y fecha inicial.");
@@ -404,6 +406,8 @@ export default function Home() {
     setEditingTrip(trip ?? null);
     setKmInitialDraft(trip?.kmInitial ?? 0);
     setKmFinalDraft(trip?.kmFinal ?? 0);
+    setDriverDraft(trip?.driver ?? "");
+    setHelperDraft(trip?.helper ?? helperAssignments.find((assignment) => assignment.driver === trip?.driver)?.helper ?? "");
     setTripTab("data");
     setInvoiceRows(trip ? trip.orders.map((_, index) => ({ id: index + 1 })) : []);
     setTripCostRows([{ id: 1 }]);
@@ -452,6 +456,11 @@ export default function Home() {
     ...trips.filter((trip) => trip.vehicle === plate).flatMap((trip) => [trip.kmInitial, trip.kmFinal]),
     ...fuelEntries.filter((entry) => entry.vehicle === plate).map((entry) => entry.odometer),
   );
+  const latestVehicleDriver = (plate: string) => trips
+    .filter((trip) => trip.vehicle === plate && trip.driver)
+    .sort((a, b) => b.id - a.id)[0]?.driver ?? "";
+  const helperForDriver = (driver: string) => helperAssignments.find((assignment) => assignment.driver === driver)?.helper ?? "";
+  const registeredHelpers = Array.from(new Set(helperAssignments.map((assignment) => assignment.helper).filter(Boolean)));
   const daysUntil = (date?: string) => date ? Math.ceil((new Date(`${date}T12:00:00`).getTime() - new Date(`${today}T12:00:00`).getTime()) / 86400000) : null;
   const operationalAlerts = [
     ...maintenance.flatMap((item) => {
@@ -532,8 +541,9 @@ export default function Home() {
         <section className="trip-tab-panel data-panel" hidden={tripTab !== "data"}>
           <label>N.º de viaje<input value={editingTrip?.id ?? (trips.length ? Math.max(...trips.map((trip) => trip.id)) + 1 : 1)} readOnly aria-label="Número secuencial del viaje"/></label>
           <label>Sucursal<select name="branch" required defaultValue={editingTrip?.branch ?? ""}><option value="" disabled>Seleccione la sucursal</option>{activeBranches.map((branch) => <option key={branch.id} value={branch.name}>{branch.name}</option>)}</select></label>
-          <label>Chapa<select name="vehicle" required defaultValue={editingTrip?.vehicle ?? ""} onChange={(event) => { if (!editingTrip) { setKmInitialDraft(latestVehicleKm(event.target.value)); setKmFinalDraft(0); } }}><option value="" disabled>Seleccione la chapa</option>{activeVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.plate}</option>)}</select></label>
-          <label>Chofer<select name="driver" required defaultValue={editingTrip?.driver ?? ""}><option value="" disabled>Seleccione el chofer</option>{activeDrivers.map((driver) => <option key={driver.id} value={driver.name}>{driver.name}</option>)}</select></label>
+          <label>Chapa<select name="vehicle" required defaultValue={editingTrip?.vehicle ?? ""} onChange={(event) => { if (!editingTrip) { const driver = latestVehicleDriver(event.target.value); setKmInitialDraft(latestVehicleKm(event.target.value)); setKmFinalDraft(0); setDriverDraft(driver); setHelperDraft(helperForDriver(driver)); } }}><option value="" disabled>Seleccione la chapa</option>{activeVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.plate}</option>)}</select></label>
+          <label>Chofer<select name="driver" required value={driverDraft} onChange={(event) => { const driver = event.target.value; setDriverDraft(driver); setHelperDraft(helperForDriver(driver)); }}><option value="" disabled>Seleccione el chofer</option>{activeDrivers.map((driver) => <option key={driver.id} value={driver.name}>{driver.name}</option>)}</select></label>
+          <label>Ayudante<select name="helper" value={helperDraft} onChange={(event) => setHelperDraft(event.target.value)}><option value="">Sin ayudante</option>{registeredHelpers.map((helper) => <option key={helper} value={helper}>{helper}</option>)}</select></label>
           <label>Fecha inicial<input name="startDate" type="date" defaultValue={editingTrip?.startDate ?? today} required/></label>
           <label>Fecha final<input name="endDate" type="date" min={editingTrip?.startDate} defaultValue={editingTrip?.endDate ?? ""}/></label>
           <label>Km inicial<input name="kmInitial" type="number" min="0" placeholder="0" value={kmInitialDraft || ""} onChange={(event) => setKmInitialDraft(Number(event.target.value))} required/></label>
