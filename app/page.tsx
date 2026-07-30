@@ -704,7 +704,9 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     const target = targetDistance > 0
       ? targetedCycles.reduce((sum, cycle) => sum + targets[cycle.vehicle] * cycle.distance, 0) / targetDistance
       : vehicles.map((vehicle) => targets[vehicle]).find(Boolean) ?? 0;
-    const ratio = target > 0 ? consumption / target : 0;
+    const roundedConsumption = Math.round(consumption * 100) / 100;
+    const roundedTarget = Math.round(target * 100) / 100;
+    const ratio = roundedTarget > 0 ? roundedConsumption / roundedTarget : 0;
     const score = ratio >= 1 ? 1 : ratio >= .95 ? .75 : ratio >= .9 ? .5 : 0;
     const fuelMaximum = national ? 200000 : 150000;
     const fuelBonus = Math.round(fuelMaximum * score);
