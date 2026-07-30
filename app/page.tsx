@@ -247,10 +247,22 @@ export default function Home() {
   const result = revenue - costs - fuelCost;
   const financialSeries = useMemo(() => {
     const periodKey = (date: string) => chartPeriod === "daily" ? date : date.slice(0, 7);
-    const keys = Array.from(new Set([
-      ...filteredTrips.map((trip) => periodKey(trip.startDate)),
-      ...filteredCosts.map((cost) => periodKey(cost.date)),
-    ])).filter(Boolean).sort().slice(chartPeriod === "daily" ? -7 : -6);
+    const sourceDates = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date)].filter(Boolean).sort();
+    let keys: string[];
+    if (chartPeriod === "daily" && sourceDates.length) {
+      const lastDataDate = sourceDates[sourceDates.length - 1];
+      const startDate = filters.dateFrom || `${lastDataDate.slice(0, 7)}-01`;
+      const endDate = filters.dateTo || lastDataDate;
+      const cursor = new Date(`${startDate}T12:00:00Z`);
+      const end = new Date(`${endDate}T12:00:00Z`);
+      keys = [];
+      while (cursor <= end) {
+        keys.push(cursor.toISOString().slice(0, 10));
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+    } else {
+      keys = Array.from(new Set(sourceDates.map(periodKey))).slice(-6);
+    }
     return keys.map((key) => {
       const matches = (date: string) => periodKey(date) === key;
       const bucketTrips = filteredTrips.filter((trip) => matches(trip.startDate));
@@ -490,7 +502,7 @@ export default function Home() {
           <article><span className="metric-icon positive">↗</span><div><small>Resultado</small><strong className="green">{money.format(result)}</strong><em>Después de costos y combustible</em></div></article>
           <article><span className="metric-icon">▱</span><div><small>Viajes activos</small><strong>{filteredTrips.filter((trip) => trip.status !== "Finalizado").length}</strong><em>Control por kilometraje</em></div></article>
         </section>
-        <section className="financial-card"><div className="summary"><div className="card-heading"><h2>Resumen financiero</h2><select className="chart-period-select" value={chartPeriod} onChange={(event) => setChartPeriod(event.target.value as "daily" | "monthly")} aria-label="Periodo del gráfico"><option value="daily">Diario</option><option value="monthly">Mensual</option></select></div><p><span><i className="dot revenue"/>Fletes</span><strong>{money.format(revenue)}</strong></p><p><span><i className="dot costs"/>Costos</span><strong>{money.format(costs + fuelCost)}</strong></p><p><span><i className="dot profit"/>Resultado</span><strong className={result >= 0 ? "green" : "negative-value"}>{money.format(result)}</strong></p></div><div className="chart" aria-label="Gráfico del resumen financiero"><div className="chart-grid"><span>{axisLabel(chartScaleMax)}</span><span>{axisLabel(chartScaleMax * 2 / 3)}</span><span>{axisLabel(chartScaleMax / 3)}</span><span>0</span></div>{financialSeries.length ? <><svg viewBox="0 0 720 150" role="img" aria-label={chartPeriod === "daily" ? "Fletes, costos y resultado por día" : "Fletes, costos y resultado por mes"}><polyline className="line revenue-line" points={chartPoints("fletes")}/><polyline className="line costs-line" points={chartPoints("costs")}/><polyline className="line profit-line" points={chartPoints("result")}/>{financialSeries.map((item, index) => <g key={item.key}><circle className="chart-point revenue-point" cx={chartX(index)} cy={chartY(item.fletes)} r="3"/><circle className="chart-point costs-point" cx={chartX(index)} cy={chartY(item.costs)} r="3"/><circle className="chart-point profit-point" cx={chartX(index)} cy={chartY(item.result)} r="3"/></g>)}</svg><div className="days">{financialSeries.map((item) => <span key={item.key}>{item.label}</span>)}</div></> : <div className="chart-empty">No hay datos para el periodo seleccionado.</div>}</div></section>
+        <section className="financial-card"><div className="summary"><div className="card-heading"><h2>Resumen financiero</h2><select className="chart-period-select" value={chartPeriod} onChange={(event) => setChartPeriod(event.target.value as "daily" | "monthly")} aria-label="Periodo del gráfico"><option value="daily">Diario</option><option value="monthly">Mensual</option></select></div><p><span><i className="dot revenue"/>Fletes</span><strong>{money.format(revenue)}</strong></p><p><span><i className="dot costs"/>Costos</span><strong>{money.format(costs + fuelCost)}</strong></p><p><span><i className="dot profit"/>Resultado</span><strong className={result >= 0 ? "green" : "negative-value"}>{money.format(result)}</strong></p></div><div className="chart" aria-label="Gráfico del resumen financiero"><div className="chart-grid"><span>{axisLabel(chartScaleMax)}</span><span>{axisLabel(chartScaleMax * 2 / 3)}</span><span>{axisLabel(chartScaleMax / 3)}</span><span>0</span></div>{financialSeries.length ? <div className="chart-series-scroll"><div className="chart-series" style={{ minWidth: `${Math.max(720, financialSeries.length * 48)}px` }}><svg viewBox="0 0 720 150" role="img" aria-label={chartPeriod === "daily" ? "Fletes, costos y resultado por día" : "Fletes, costos y resultado por mes"}><polyline className="line revenue-line" points={chartPoints("fletes")}/><polyline className="line costs-line" points={chartPoints("costs")}/><polyline className="line profit-line" points={chartPoints("result")}/>{financialSeries.map((item, index) => <g key={item.key}><circle className="chart-point revenue-point" cx={chartX(index)} cy={chartY(item.fletes)} r="3"/><circle className="chart-point costs-point" cx={chartX(index)} cy={chartY(item.costs)} r="3"/><circle className="chart-point profit-point" cx={chartX(index)} cy={chartY(item.result)} r="3"/></g>)}</svg><div className="days">{financialSeries.map((item) => <span key={item.key}>{item.label}</span>)}</div></div></div> : <div className="chart-empty">No hay datos para el periodo seleccionado.</div>}</div></section>
         <section className="alerts-center" aria-label="Central de alertas operacionales">
           <div className="card-heading"><div><p className="eyebrow">Atención requerida</p><h2>Central de alertas operacionales</h2></div><strong>{operationalAlerts.length} alerta(s)</strong></div>
           <div className="alert-summary">
