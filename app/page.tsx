@@ -678,32 +678,39 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
   readOnly: boolean;
 }) {
   const pilotMonths = [
-    { value: "2026-07", label: "Julio 2026" },
-    { value: "2026-08", label: "Agosto 2026" },
-    { value: "2026-09", label: "Septiembre 2026" },
+    { value: "2026-07", label: "Julho de 2026" },
+    { value: "2026-08", label: "Agosto de 2026" },
+    { value: "2026-09", label: "Setembro de 2026" },
   ];
   const [month, setMonth] = useState("2026-07");
+  const [reportDriver, setReportDriver] = useState("");
   const targets: Record<string, number> = { AAUC019: 7.38, AASN159: 6.42, ABAD083: 6.11, ABAD112: 9, ABBB263: 4.71 };
+  const previousMonth = (() => {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const date = new Date(Date.UTC(year, monthNumber - 2, 1));
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+  })();
+  const cycleMonth = (cycle: FuelCycle) => fuelEntries.find((entry) => entry.id === cycle.entryIds[cycle.entryIds.length - 1])?.date.slice(0, 7);
   const monthTrips = trips.filter((trip) => trip.startDate.startsWith(month));
   const driverNames = Array.from(new Set(monthTrips.map((trip) => trip.driver).filter(Boolean))).sort();
   const rows = driverNames.map((driver) => {
     const driverTrips = monthTrips.filter((trip) => trip.driver === driver);
     const national = driverTrips.some((trip) => trip.orders.some((order) => order.freightType === "Nacional" || order.freightType === "Remisión"));
     const category = national ? "Nacional" : "Local";
-    const vehicles = Array.from(new Set(driverTrips.map((trip) => trip.vehicle)));
-    const monthCycles = cycles.filter((cycle) => {
-      if (!vehicles.includes(cycle.vehicle)) return false;
-      const endEntry = fuelEntries.find((entry) => entry.id === cycle.entryIds[cycle.entryIds.length - 1]);
-      return Boolean(endEntry?.date.startsWith(month));
-    });
+    const vehicleList = Array.from(new Set(driverTrips.map((trip) => trip.vehicle)));
+    const monthCycles = cycles.filter((cycle) => vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === month);
+    const previousCycles = cycles.filter((cycle) => vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === previousMonth);
     const totalDistance = monthCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
     const totalLiters = monthCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+    const previousDistance = previousCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
+    const previousLiters = previousCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
     const consumption = totalLiters > 0 ? totalDistance / totalLiters : 0;
+    const previousConsumption = previousLiters > 0 ? previousDistance / previousLiters : 0;
     const targetedCycles = monthCycles.filter((cycle) => targets[cycle.vehicle]);
     const targetDistance = targetedCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
     const target = targetDistance > 0
       ? targetedCycles.reduce((sum, cycle) => sum + targets[cycle.vehicle] * cycle.distance, 0) / targetDistance
-      : vehicles.map((vehicle) => targets[vehicle]).find(Boolean) ?? 0;
+      : vehicleList.map((vehicle) => targets[vehicle]).find(Boolean) ?? 0;
     const roundedConsumption = Math.round(consumption * 100) / 100;
     const roundedTarget = Math.round(target * 100) / 100;
     const ratio = roundedTarget > 0 ? roundedConsumption / roundedTarget : 0;
@@ -713,7 +720,7 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     const unloadingBonus = driverTrips.length ? (national ? 250000 : 200000) : 0;
     const review = reviews.find((item) => item.month === month && item.driver === driver);
     const damageBonus = review?.noDamageReturns ? (national ? 150000 : 100000) : 0;
-    return { driver, category, trips: driverTrips.length, vehicles: vehicles.join(", "), consumption, target, score, fuelBonus, unloadingBonus, damageBonus, total: fuelBonus + unloadingBonus + damageBonus, reviewed: Boolean(review?.noDamageReturns) };
+    return { driver, category, trips: driverTrips.length, vehicles: vehicleList.join(", "), vehicleList, consumption, previousConsumption, totalDistance, totalLiters, target, score, fuelBonus, unloadingBonus, damageBonus, total: fuelBonus + unloadingBonus + damageBonus, reviewed: Boolean(review?.noDamageReturns) };
   });
   const helperRows = rows.flatMap((row) => {
     const assignment = helperAssignments.find((item) => item.driver === row.driver);
@@ -733,13 +740,27 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     const next = helperReviews.filter((item) => !(item.month === month && item.driver === driver && item.helper === helper));
     setHelperReviews([...next, { month, driver, helper, noDamageReturns: checked }]);
   };
+  const printTeam = (driver: string) => {
+    setReportDriver(driver);
+    window.setTimeout(() => window.print(), 120);
+  };
+  const reportRow = rows.find((row) => row.driver === reportDriver);
+  const reportHelper = helperRows.find((row) => row.driver === reportDriver);
   const monthLabel = pilotMonths.find((item) => item.value === month)?.label ?? month;
+  const gs = (value: number) => `Gs. ${number.format(value)}`;
+  const improvement = reportRow?.previousConsumption ? (reportRow.consumption - reportRow.previousConsumption) / reportRow.previousConsumption * 100 : null;
+  const improvementText = improvement === null ? "Não há consumo do mês anterior disponível para comparação."
+    : improvement > 0 ? `Consumo melhorou ${Math.abs(improvement).toFixed(1).replace(".", ",")}% em relação ao mês anterior.`
+    : improvement < 0 ? `Consumo reduziu ${Math.abs(improvement).toFixed(1).replace(".", ",")}% em relação ao mês anterior.`
+    : "Consumo permaneceu estável em relação ao mês anterior.";
+  const observation = reportRow ? (improvement === null
+    ? `O veículo apresentou consumo médio de ${reportRow.consumption.toFixed(1).replace(".", ",")} km/l no período. Não há dados suficientes do mês anterior para calcular a evolução.`
+    : `O veículo apresentou ${improvement >= 0 ? "melhora" : "redução"} no consumo médio, passando de ${reportRow.previousConsumption.toFixed(1).replace(".", ",")} km/l para ${reportRow.consumption.toFixed(1).replace(".", ",")} km/l, uma ${improvement >= 0 ? "evolução" : "variação negativa"} de ${Math.abs(improvement).toFixed(1).replace(".", ",")}%. O resultado ${improvement >= 0 ? "demonstra maior eficiência no uso de combustível durante o período." : "indica necessidade de acompanhamento da eficiência de combustível."}`) : "";
   return <div className="bonus-module">
     <section className="module-head bonus-screen-head">
-      <div><p className="eyebrow">Piloto de 3 meses</p><h2>Bonificación de motoristas y ajudantes</h2><p className="muted">Simulación mensual. Los valores no se consideran pagados hasta su aprobación administrativa.</p></div>
-      <div className="bonus-head-actions"><label className="bonus-month">Período<select value={month} onChange={(event) => setMonth(event.target.value)}>{pilotMonths.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><button className="secondary bonus-print" onClick={() => window.print()}>Imprimir informe</button></div>
+      <div><p className="eyebrow">Piloto de 3 meses</p><h2>Bonificación de motoristas y ajudantes</h2><p className="muted">Simulação mensal. Use “Imprimir equipe” para gerar o relatório individual aprovado.</p></div>
+      <div className="bonus-head-actions"><label className="bonus-month">Período<select value={month} onChange={(event) => { setMonth(event.target.value); setReportDriver(""); }}>{pilotMonths.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div>
     </section>
-    <header className="bonus-print-header"><p>FreteControl ERP</p><h1>Informe de bonificaciones</h1><span>Período: {monthLabel}</span></header>
     <section className="metrics bonus-metrics">
       <article><span className="metric-icon">₲</span><div><small>Total general</small><strong>{money.format(driverTotal + helperTotal)}</strong><em>Motoristas y ajudantes</em></div></article>
       <article><span className="metric-icon positive">♙</span><div><small>Motoristas</small><strong>{money.format(driverTotal)}</strong><em>{rows.length} evaluados</em></div></article>
@@ -748,9 +769,9 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     <section className="table-card bonus-card">
       <div className="bonus-section-title"><div><p className="eyebrow">Detalle</p><h3>Motoristas</h3></div><strong>{money.format(driverTotal)}</strong></div>
       <div className="bonus-rules"><strong>Reglas:</strong> consumo paga 0%, 50%, 75% o 100% según alcance menos de 90%, 90%, 95% o 100% de la meta. Descarga se paga con al menos un viaje en el mes.</div>
-      <div className="table-scroll"><table className="bonus-table"><thead><tr><th>Motorista</th><th>Categoría</th><th>Viajes</th><th>Consumo km/L</th><th>Promedio</th><th>Descarga</th><th>Sin devolución por averías</th><th>Total</th></tr></thead><tbody>
-        {rows.map((row) => <tr key={row.driver}><td><strong>{row.driver}</strong><small>{row.vehicles}</small></td><td><span className="status-badge">{row.category}</span></td><td>{row.trips}</td><td><strong>{row.consumption ? row.consumption.toFixed(2) : "Sin ciclo"}</strong><small>Meta {row.target ? row.target.toFixed(2) : "pendiente"}</small></td><td><strong>{money.format(row.fuelBonus)}</strong><small>{Math.round(row.score * 100)}% del máximo</small></td><td><strong>{money.format(row.unloadingBonus)}</strong><small>Elegible</small></td><td><label className="bonus-check"><input type="checkbox" checked={row.reviewed} disabled={readOnly} onChange={(event) => updateDamageReview(row.driver, event.target.checked)}/><span>{row.reviewed ? money.format(row.damageBonus) : "Pendiente de confirmar"}</span></label></td><td><strong>{money.format(row.total)}</strong></td></tr>)}
-        {!rows.length && <tr><td colSpan={8}>No hay viajes registrados para este período.</td></tr>}
+      <div className="table-scroll"><table className="bonus-table"><thead><tr><th>Motorista</th><th>Categoría</th><th>Viajes</th><th>Consumo km/L</th><th>Promedio</th><th>Descarga</th><th>Sin devolución por averías</th><th>Total</th><th>Informe</th></tr></thead><tbody>
+        {rows.map((row) => <tr key={row.driver}><td><strong>{row.driver}</strong><small>{row.vehicles}</small></td><td><span className="status-badge">{row.category}</span></td><td>{row.trips}</td><td><strong>{row.consumption ? row.consumption.toFixed(2) : "Sin ciclo"}</strong><small>Meta {row.target ? row.target.toFixed(2) : "pendiente"}</small></td><td><strong>{money.format(row.fuelBonus)}</strong><small>{Math.round(row.score * 100)}% del máximo</small></td><td><strong>{money.format(row.unloadingBonus)}</strong><small>Elegible</small></td><td><label className="bonus-check"><input type="checkbox" checked={row.reviewed} disabled={readOnly} onChange={(event) => updateDamageReview(row.driver, event.target.checked)}/><span>{row.reviewed ? money.format(row.damageBonus) : "Pendiente de confirmar"}</span></label></td><td><strong>{money.format(row.total)}</strong></td><td><button className="edit-action team-print-button" onClick={() => printTeam(row.driver)}>Imprimir equipe</button></td></tr>)}
+        {!rows.length && <tr><td colSpan={9}>No hay viajes registrados para este período.</td></tr>}
       </tbody></table></div>
     </section>
     <section className="table-card bonus-card helper-bonus-card">
@@ -761,7 +782,15 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
         {!helperRows.length && <tr><td colSpan={7}>No hay ajudantes vinculados a motoristas con viajes en este período. Agréguelos en Configuración.</td></tr>}
       </tbody></table></div>
     </section>
-    <footer className="bonus-print-footer"><span>FreteControl ERP · Informe de bonificaciones</span><span>Generado el {new Intl.DateTimeFormat("es-PY").format(new Date())}</span></footer>
+    {reportRow && <article className="individual-bonus-report">
+      <header className="ibr-header"><h1>RELATÓRIO MENSAL DE BONIFICAÇÕES</h1><div><span><strong>Competência:</strong> {monthLabel}</span><span><strong>Veículo:</strong> {reportRow.vehicles || "Sem veículo"}</span><span><strong>Categoria:</strong> Rota {reportRow.category}</span></div></header>
+      <section className="ibr-section"><h2><b>1</b> INDICADORES DO VEÍCULO</h2><div className="ibr-indicators"><table><tbody><tr><td>Distância percorrida</td><td>{number.format(Math.round(reportRow.totalDistance))} km</td></tr><tr><td>Combustível consumido</td><td>{reportRow.totalLiters.toFixed(1).replace(".", ",")} litros</td></tr><tr><td>Consumo do mês anterior</td><td>{reportRow.previousConsumption ? `${reportRow.previousConsumption.toFixed(1).replace(".", ",")} km/l` : "Sem dados"}</td></tr><tr><td>Consumo do mês atual</td><td>{reportRow.consumption ? `${reportRow.consumption.toFixed(1).replace(".", ",")} km/l` : "Sem dados"}</td></tr></tbody></table><div className={`ibr-highlight ${improvement !== null && improvement < 0 ? "negative" : ""}`}>{improvementText}</div></div></section>
+      <section className="ibr-section"><h2><b>2</b> BONIFICAÇÃO DO MOTORISTA</h2><h3>{reportRow.driver} <span>— Motorista {reportRow.category.toLowerCase()}</span></h3><table className="ibr-bonus-table"><thead><tr><th>Critério</th><th>Resultado</th><th>Bonificação</th></tr></thead><tbody><tr><td>Descarga de mercadorias</td><td><em>{reportRow.trips ? "Cumprido" : "Não cumprido"}</em></td><td>{gs(reportRow.unloadingBonus)}</td></tr><tr><td>Sem devolução por avarias</td><td><em>{reportRow.reviewed ? "Cumprido" : "Pendente"}</em></td><td>{gs(reportRow.damageBonus)}</td></tr><tr><td>Meta de consumo médio</td><td><em>{reportRow.score === 1 ? "Cumprido" : reportRow.score ? "Parcial" : "Não cumprido"} — {reportRow.consumption.toFixed(1).replace(".", ",")} km/l</em></td><td>{gs(reportRow.fuelBonus)}</td></tr><tr className="total"><td>Total do motorista</td><td></td><td>{gs(reportRow.total)}</td></tr></tbody></table></section>
+      <section className="ibr-section"><h2><b>3</b> BONIFICAÇÃO DO AJUDANTE</h2>{reportHelper ? <><h3>{reportHelper.helper} <span>— Ajudante {reportHelper.category.toLowerCase()}</span></h3><table className="ibr-bonus-table"><thead><tr><th>Critério</th><th>Resultado</th><th>Bonificação</th></tr></thead><tbody><tr><td>Descarga de mercadorias</td><td><em>{reportHelper.trips ? "Cumprido" : "Não cumprido"}</em></td><td>{gs(reportHelper.unloadingBonus)}</td></tr><tr><td>Sem devolução por avarias</td><td><em>{reportHelper.reviewed ? "Cumprido" : "Pendente"}</em></td><td>{gs(reportHelper.damageBonus)}</td></tr><tr className="total"><td>Total do ajudante</td><td></td><td>{gs(reportHelper.total)}</td></tr></tbody></table></> : <p className="ibr-empty">Nenhum ajudante vinculado a este motorista.</p>}</section>
+      <section className="ibr-section"><h2><b>4</b> RESUMO DO PAGAMENTO</h2><table className="ibr-summary"><tbody><tr><td>Motorista</td><td>{gs(reportRow.total)}</td></tr><tr><td>Ajudante</td><td>{gs(reportHelper?.total ?? 0)}</td></tr><tr className="total"><td>Total geral da equipe</td><td>{gs(reportRow.total + (reportHelper?.total ?? 0))}</td></tr></tbody></table></section>
+      <section className="ibr-section"><h2><b>5</b> OBSERVAÇÃO AUTOMÁTICA</h2><p className="ibr-observation">{observation}</p></section>
+      <footer>FreteControl ERP · Relatório mensal de bonificações</footer>
+    </article>}
   </div>;
 }
 
