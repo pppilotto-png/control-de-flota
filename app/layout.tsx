@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "FreteControl ERP",
-  description: "Controle inteligente de viagens, pedidos, custos e abastecimentos.",
+  description: "Control inteligente de viajes, pedidos, costos y abastecimientos.",
   other: {
     "codex-preview": "development",
   },
@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="es-PY">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
