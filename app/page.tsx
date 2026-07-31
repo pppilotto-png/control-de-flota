@@ -211,14 +211,14 @@ export default function Home() {
     saveTimer.current = setTimeout(() => {
       setSaveStatus("saving");
       // Serialize writes so an older, slower request can never overwrite the
-      // newest helper assignment or bonus review. `keepalive` also lets the
-      // browser finish the request when the user reloads or closes the page.
+      // newest helper assignment or bonus review. Do not use `keepalive` here:
+      // browsers reject keepalive request bodies above roughly 64 KB, while
+      // the complete ERP snapshot is larger than that limit.
       saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
         const response = await fetch("/api/state", {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: payload,
-          keepalive: true,
         });
           if (!response.ok) throw new Error();
           setSaveStatus("saved");
