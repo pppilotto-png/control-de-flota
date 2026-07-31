@@ -142,6 +142,7 @@ export default function Home() {
   const [dataReady, setDataReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"loading" | "saved" | "saving" | "error">("loading");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [chartPeriod, setChartPeriod] = useState<"daily" | "monthly">("daily");
   const [filters, setFilters] = useState<Filters>({ dateFrom: "", dateTo: "", branch: "", vehicle: "", driver: "", status: "" });
@@ -206,19 +207,23 @@ export default function Home() {
   useEffect(() => {
     if (!dataReady) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    const payload = JSON.stringify({ trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews, helperAssignments, helperBonusReviews });
     saveTimer.current = setTimeout(() => {
       setSaveStatus("saving");
-      fetch("/api/state", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ trips, tripCosts, fuelEntries, maintenance, serviceRequests, documents, branches, vehicles, drivers, freightRates, users, auditLog, trash, bonusReviews, helperAssignments, helperBonusReviews }),
-      })
-        .then((response) => {
+      // Serialize writes so an older, slower request can never overwrite the
+      // newest helper assignment or bonus review. `keepalive` also lets the
+      // browser finish the request when the user reloads or closes the page.
+      saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
+        const response = await fetch("/api/state", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: payload,
+          keepalive: true,
+        });
           if (!response.ok) throw new Error();
           setSaveStatus("saved");
-        })
-        .catch(() => setSaveStatus("error"));
-    }, 650);
+      }).catch(() => setSaveStatus("error"));
+    }, 0);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
