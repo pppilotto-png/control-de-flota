@@ -222,9 +222,9 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
 @media(max-width:900px){.helper-form{grid-template-columns:1fr}.helper-list article{grid-template-columns:1fr auto}.helper-list article>span{display:none}.bonus-head-actions{width:100%;align-items:stretch;flex-direction:column}}
 @media print{
   @page{size:A4 landscape;margin:10mm}
-  body *{visibility:hidden}
-  .bonus-module,.bonus-module *{visibility:visible}
-  .bonus-module{position:absolute;inset:0;width:100%;gap:10px;color:#111}
+  body.printing-bonus-report *{visibility:hidden}
+  body.printing-bonus-report .bonus-module,body.printing-bonus-report .bonus-module *{visibility:visible}
+  body.printing-bonus-report .bonus-module{position:absolute;inset:0;width:100%;gap:10px;color:#111}
   .bonus-screen-head{display:none}
   .bonus-print-header{display:block;padding-bottom:10px;border-bottom:2px solid #08665c}
   .bonus-print-header p{margin:0;color:#08665c;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em}
