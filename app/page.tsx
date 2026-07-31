@@ -627,6 +627,65 @@ function printFreightReport() {
   printWithBodyMode("printing-freight-report");
 }
 
+function printStandaloneReport(selector: string, title: string, fallbackMode: string) {
+  const report = document.querySelector<HTMLElement>(selector);
+  if (!report) return;
+
+  // Open synchronously from the click event so browsers do not treat the
+  // report window as an unsolicited popup.
+  const printWindow = window.open("", "_blank", "width=1000,height=800");
+  if (!printWindow) {
+    printWithBodyMode(fallbackMode);
+    return;
+  }
+
+  const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map((node) => node.outerHTML)
+    .join("");
+
+  printWindow.document.open();
+  printWindow.document.write(`<!doctype html>
+<html lang="es-PY">
+  <head>
+    <meta charset="utf-8" />
+    <base href="${window.location.origin}/" />
+    <title>${title}</title>
+    ${styles}
+    <style>
+      html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+      body * { visibility: visible !important; }
+      .report-toolbar { display: none !important; }
+      .trip-report {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 10mm !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+      }
+      @media print {
+        @page { margin: 10mm; }
+        .trip-report { padding: 0 !important; }
+      }
+    </style>
+  </head>
+  <body>${report.outerHTML}</body>
+</html>`);
+  printWindow.document.close();
+
+  printWindow.addEventListener("load", () => {
+    const fontsReady = printWindow.document.fonts?.ready ?? Promise.resolve();
+    void fontsReady.then(() => {
+      window.setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 200);
+    });
+  }, { once: true });
+}
+
 function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
   trip: Trip;
   rates: FreightRates;
@@ -719,7 +778,7 @@ function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { e
   const average = closedLiters > 0 ? closedDistance / closedLiters : 0;
   return <div className="trip-report-backdrop fuel-report-backdrop" role="dialog" aria-modal="true" aria-label="Informe de combustible">
     <article className="trip-report fuel-report">
-      <div className="report-toolbar"><button className="secondary" onClick={onClose}>Cerrar</button><button className="primary" onClick={printFreightReport}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
+      <div className="report-toolbar"><button className="secondary" onClick={onClose}>Cerrar</button><button className="primary" onClick={() => printStandaloneReport(".fuel-report", "Informe de combustible", "printing-freight-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
       <header className="report-header"><div><div className="logo"><strong>Frete</strong><span>Control</span></div><p>Informe de combustible, ciclos y prorrateo por viaje</p>{vehicleFilter && <p><strong>Chapa:</strong> {vehicleFilter}</p>}</div><div className="report-number"><small>COMBUSTIBLE</small><strong>{cycles.length} ciclo(s)</strong><span>{entries.length} carga(s) registrada(s)</span></div></header>
       <section className="report-section"><div className="report-section-title"><span>01</span><div><small>RESUMEN</small><h2>Ciclos cerrados</h2></div></div>
         <div className="report-result-grid"><div><small>Distancia medida</small><strong>{number.format(closedDistance)} km</strong></div><div><small>Litros consumidos</small><strong>{number.format(closedLiters)} L</strong></div><div><small>Promedio general</small><strong>{average ? `${average.toFixed(2)} km/L` : "—"}</strong></div><div><small>Costo de los ciclos</small><strong>{money.format(closedCost)}</strong></div><div><small>Asignado a viajes</small><strong>{money.format(allocated)}</strong></div><div><small>Ciclos abiertos</small><strong>{openCycles.filter((cycle) => cycle.entries.length > 0).length}</strong></div></div>
