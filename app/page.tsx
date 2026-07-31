@@ -529,7 +529,7 @@ export default function Home() {
           {operationalAlerts.length > 8 && <p className="alerts-more">Mostrando 8 de {operationalAlerts.length} alertas. Abra cada módulo para consultar todos.</p>}
         </section>
         <TripTable trips={filteredTrips.filter((trip) => trip.status !== "Finalizado")} rates={freightRates} onAll={() => setActive("trips")} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip}/>
-      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} rates={freightRates} costs={tripCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
+      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
     </section>
     {modal && <div className="modal-backdrop" onMouseDown={() => setModal(false)}><div className="modal trip-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setModal(false); setEditingTrip(null); setTripFormError(""); }} aria-label="Cerrar">×</button><p className="eyebrow">Operación</p><h2 id="modal-title">{editingTrip ? `Editar viaje N.º ${editingTrip.id}` : "Nuevo viaje"}</h2><p className="modal-intro">Registre los datos del viaje. Los pedidos y costos son opcionales y pueden agregarse después.</p>
@@ -860,8 +860,9 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
   </div>;
 }
 
-function ResultsModule({ trips, rates, costs, fuelByTrip, onReport }: {
+function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, onReport }: {
   trips: Trip[];
+  vehicleFilter: string;
   rates: FreightRates;
   costs: TripCost[];
   fuelByTrip: Map<number, number>;
@@ -870,7 +871,8 @@ function ResultsModule({ trips, rates, costs, fuelByTrip, onReport }: {
   type ReportView = "trips" | "branch" | "vehicle" | "driver" | "client";
   const [view, setView] = useState<ReportView>("trips");
   const [freightTypeFilter, setFreightTypeFilter] = useState<"" | FreightType>("Dobro");
-  const rows = trips.map((trip) => {
+  const reportTrips = vehicleFilter ? trips.filter((trip) => trip.vehicle === vehicleFilter) : trips;
+  const rows = reportTrips.map((trip) => {
     const matchingOrders = freightTypeFilter
       ? trip.orders.filter((order) => order.freightType === freightTypeFilter)
       : trip.orders;
@@ -946,7 +948,7 @@ function ResultsModule({ trips, rates, costs, fuelByTrip, onReport }: {
 
   return <section className="results-layout">
     <div className="results-heading">
-      <div><p className="eyebrow">Gestión operacional</p><h2>Relatorios gerenciales</h2><p>Rentabilidad consolidada sin duplicar el combustible distribuido por ciclos.</p></div>
+      <div><p className="eyebrow">Gestión operacional</p><h2>Relatorios gerenciales</h2><p>Rentabilidad consolidada sin duplicar el combustible distribuido por ciclos.</p>{vehicleFilter && <p className="results-vehicle-filter"><strong>Chapa:</strong> {vehicleFilter}</p>}</div>
       <button className="primary print-button" onClick={() => window.print()}><Icon name="report"/>Imprimir / Guardar PDF</button>
     </div>
     <div className="report-tabs" role="tablist" aria-label="Tipo de informe">
@@ -959,7 +961,7 @@ function ResultsModule({ trips, rates, costs, fuelByTrip, onReport }: {
           {freightTypes.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </label>
-      <div><small>Filtro aplicado</small><strong>{freightTypeFilter || "Todos los tipos de flete"}</strong><span>{rows.length} viaje(s) · {rows.reduce((sum, row) => sum + row.matchingOrders.length, 0)} pedido(s)</span></div>
+      <div><small>Filtro aplicado</small><strong>{vehicleFilter ? `Chapa ${vehicleFilter}` : "Todas las chapas"} · {freightTypeFilter || "Todos los tipos de flete"}</strong><span>{rows.length} viaje(s) · {rows.reduce((sum, row) => sum + row.matchingOrders.length, 0)} pedido(s)</span></div>
     </div>
     {freightTypeFilter && <div className="table-card report-table">
       <div className="card-heading"><div><p className="eyebrow">Pedidos filtrados</p><h2>Todos los pedidos — {freightTypeFilter}</h2></div><strong>{matchingOrderRows.length} pedido(s)</strong></div>
