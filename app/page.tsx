@@ -605,11 +605,11 @@ export default function Home() {
   </main>;
 }
 
-function printFreightReport() {
+function printWithBodyMode(mode: string) {
   const body = document.body;
-  const cleanup = () => body.classList.remove("printing-freight-report");
+  const cleanup = () => body.classList.remove(mode);
 
-  body.classList.add("printing-freight-report");
+  body.classList.add(mode);
   window.addEventListener("afterprint", cleanup, { once: true });
 
   // Give the browser two paint cycles to apply the print-only layout before
@@ -621,6 +621,10 @@ function printFreightReport() {
 
   // Safety cleanup for browsers that do not dispatch `afterprint`.
   window.setTimeout(cleanup, 60_000);
+}
+
+function printFreightReport() {
+  printWithBodyMode("printing-freight-report");
 }
 
 function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
@@ -808,7 +812,7 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
   };
   const printTeam = (driver: string) => {
     setReportDriver(driver);
-    window.setTimeout(() => window.print(), 120);
+    window.setTimeout(() => printWithBodyMode("printing-bonus-report"), 120);
   };
   const reportRow = rows.find((row) => row.driver === reportDriver);
   const reportHelper = helperRows.find((row) => row.driver === reportDriver);
@@ -949,7 +953,7 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, onRepor
   return <section className="results-layout">
     <div className="results-heading">
       <div><p className="eyebrow">Gestión operacional</p><h2>Relatorios gerenciales</h2><p>Rentabilidad consolidada sin duplicar el combustible distribuido por ciclos.</p>{vehicleFilter && <p className="results-vehicle-filter"><strong>Chapa:</strong> {vehicleFilter}</p>}</div>
-      <button className="primary print-button" onClick={() => window.print()}><Icon name="report"/>Imprimir / Guardar PDF</button>
+      <button className="primary print-button" onClick={() => printWithBodyMode("printing-results-report")}><Icon name="report"/>Imprimir / Guardar PDF</button>
     </div>
     <div className="report-tabs" role="tablist" aria-label="Tipo de informe">
       {(Object.keys(reportLabels) as ReportView[]).map((key) => <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? "active" : ""} onClick={() => setView(key)}>{reportLabels[key]}</button>)}
