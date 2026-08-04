@@ -247,6 +247,19 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
 
 /* Relatório mensal individual de bonificações */
 .individual-bonus-report{display:none}.team-print-button{white-space:nowrap}
+.bonus-consolidated-report{display:none}.bonus-print-all{min-height:42px;white-space:nowrap}
+@media print{
+  body.printing-bonus-consolidated *{visibility:hidden}
+  body.printing-bonus-consolidated .bonus-consolidated-report,body.printing-bonus-consolidated .bonus-consolidated-report *{visibility:visible}
+  body.printing-bonus-consolidated .bonus-consolidated-report{display:block;position:absolute;inset:0;width:100%}
+}
+.bonus-consolidated-report{font-family:Arial,Helvetica,sans-serif;color:#14213d;background:#fff}
+.bcr-header{text-align:center;border-bottom:2px solid #08665c;padding:0 0 8px}.bcr-header h1{margin:0;font-size:22px;letter-spacing:.02em}.bcr-header p{margin:4px 0 0;font-size:12px;font-weight:700}
+.bcr-section{margin-top:10px}.bcr-section h2{margin:0 0 4px;font-size:15px}.bcr-section table,.bcr-summary table{width:100%;border-collapse:collapse;table-layout:fixed}.bcr-section th,.bcr-section td,.bcr-summary td{border:1px solid #b9cbc6;padding:4px 6px;font-size:8.5px;line-height:1.2;vertical-align:middle}.bcr-section th{background:#edf5f2;font-size:9px}.bcr-section th:nth-child(1){width:21%}.bcr-section th:nth-child(2){width:10%}.bcr-section th:nth-child(3){width:22%}.bcr-section th:nth-child(4){width:15%}.bcr-section th:nth-child(5){width:15%}.bcr-section th:nth-child(6){width:17%}.bcr-name,.bcr-total{font-weight:800}.bcr-total{text-align:right;font-size:10px!important}.bcr-section td:nth-last-child(2){text-align:right}.bcr-section .fulfilled{color:#087443;font-weight:800}.bcr-section .not-fulfilled{color:#a13a31;font-weight:800}.bcr-summary{width:52%;margin:10px auto 0}.bcr-summary h2{margin:0 0 4px;text-align:center;font-size:14px}.bcr-summary td:last-child{text-align:right;font-weight:800}.bcr-summary .grand-total td{background:#e4f3ef;font-size:11px;font-weight:900}.bonus-consolidated-report footer{margin-top:8px;padding-top:5px;border-top:1px solid #8ca09a;text-align:center;font-size:8px;color:#586864}
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  .bonus-consolidated-report{break-after:avoid-page;page-break-after:avoid}
+}
 @media print{
   @page{size:A4 portrait;margin:9mm}
   .bonus-module>*:not(.individual-bonus-report){display:none!important}

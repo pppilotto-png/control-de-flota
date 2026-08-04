@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 
 type FreightType = "Local" | "Nacional" | "Dobro" | "Devolución" | "Remisión";
@@ -670,6 +670,13 @@ function printStandaloneReport(selector: string, title: string, fallbackMode: st
         border-radius: 0 !important;
         box-shadow: none !important;
       }
+      .standalone-print-report,
+      .bonus-consolidated-report,
+      .bonus-pdf-bundle,
+      .bonus-pdf-bundle .individual-bonus-report {
+        display: block !important;
+        visibility: visible !important;
+      }
       @media print {
         @page { margin: 10mm; }
         .trip-report { padding: 0 !important; }
@@ -880,6 +887,13 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     setReportDriver(driver);
     window.setTimeout(() => printWithBodyMode("printing-bonus-report"), 120);
   };
+  const printAllBonuses = () => {
+    printStandaloneReport(
+      ".bonus-consolidated-report",
+      `Informe mensual de bonificaciones — ${monthLabel}`,
+      "printing-bonus-consolidated",
+    );
+  };
   const reportRow = rows.find((row) => row.driver === reportDriver);
   const reportHelper = helperRows.find((row) => row.driver === reportDriver);
   const monthLabel = pilotMonths.find((item) => item.value === month)?.label ?? month;
@@ -895,7 +909,7 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
   return <div className="bonus-module">
     <section className="module-head bonus-screen-head">
       <div><p className="eyebrow">Piloto de 3 meses</p><h2>Bonificación de choferes y ayudantes</h2><p className="muted">Simulación mensual. Use “Imprimir equipo” para generar el informe individual aprobado.</p></div>
-      <div className="bonus-head-actions"><label className="bonus-month">Periodo<select value={month} onChange={(event) => { setMonth(event.target.value); setReportDriver(""); }}>{pilotMonths.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label></div>
+      <div className="bonus-head-actions"><label className="bonus-month">Periodo<select value={month} onChange={(event) => { setMonth(event.target.value); setReportDriver(""); }}>{pilotMonths.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><button className="primary bonus-print-all" onClick={printAllBonuses}><Icon name="report"/>Generar todos en un único PDF</button></div>
     </section>
     <section className="metrics bonus-metrics">
       <article><span className="metric-icon">₲</span><div><small>Total general</small><strong>{money.format(driverTotal + helperTotal)}</strong><em>Choferes y ayudantes</em></div></article>
@@ -918,6 +932,26 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
         {!helperRows.length && <tr><td colSpan={7}>No hay ayudantes vinculados a choferes con viajes en este periodo. Agréguelos en Configuración.</td></tr>}
       </tbody></table></div>
     </section>
+    <article className="bonus-consolidated-report standalone-print-report">
+      <header className="bcr-header"><h1>INFORME MENSUAL DE BONIFICACIONES</h1><p>Periodo: {monthLabel}</p></header>
+      <section className="bcr-section"><h2>Choferes</h2><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Criterio</th><th>Resultado</th><th>Bonificación</th><th>Total</th></tr></thead><tbody>
+        {rows.map((row) => <Fragment key={`report-${row.driver}`}>
+          <tr><td rowSpan={3} className="bcr-name">{row.driver}</td><td rowSpan={3}>{row.category}</td><td>Descarga de mercaderías</td><td><span className={row.trips ? "fulfilled" : "not-fulfilled"}>{row.trips ? "Cumplido" : "No cumplido"}</span></td><td>{gs(row.unloadingBonus)}</td><td rowSpan={3} className="bcr-total">{gs(row.total)}</td></tr>
+          <tr><td>Sin devolución por averías</td><td><span className={row.reviewed ? "fulfilled" : "not-fulfilled"}>{row.reviewed ? "Cumplido" : "Pendiente"}</span></td><td>{gs(row.damageBonus)}</td></tr>
+          <tr><td>Promedio de consumo</td><td><span className={row.score ? "fulfilled" : "not-fulfilled"}>{row.score === 1 ? "Cumplido" : row.score ? `Parcial (${Math.round(row.score * 100)}%)` : "No cumplido"}</span></td><td>{gs(row.fuelBonus)}</td></tr>
+        </Fragment>)}
+        {!rows.length && <tr><td colSpan={6}>No hay choferes evaluados en este periodo.</td></tr>}
+      </tbody></table></section>
+      <section className="bcr-section"><h2>Ayudantes</h2><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Criterio</th><th>Resultado</th><th>Bonificación</th><th>Total</th></tr></thead><tbody>
+        {helperRows.map((row) => <Fragment key={`report-${row.driver}-${row.helper}`}>
+          <tr><td rowSpan={2} className="bcr-name">{row.helper}</td><td rowSpan={2}>{row.category}</td><td>Descarga de mercaderías</td><td><span className={row.trips ? "fulfilled" : "not-fulfilled"}>{row.trips ? "Cumplido" : "No cumplido"}</span></td><td>{gs(row.unloadingBonus)}</td><td rowSpan={2} className="bcr-total">{gs(row.total)}</td></tr>
+          <tr><td>Sin devolución por averías</td><td><span className={row.reviewed ? "fulfilled" : "not-fulfilled"}>{row.reviewed ? "Cumplido" : "Pendiente"}</span></td><td>{gs(row.damageBonus)}</td></tr>
+        </Fragment>)}
+        {!helperRows.length && <tr><td colSpan={6}>No hay ayudantes evaluados en este periodo.</td></tr>}
+      </tbody></table></section>
+      <section className="bcr-summary"><h2>RESUMEN GENERAL</h2><table><tbody><tr><td>Total choferes</td><td>{gs(driverTotal)}</td></tr><tr><td>Total ayudantes</td><td>{gs(helperTotal)}</td></tr><tr className="grand-total"><td>TOTAL GENERAL</td><td>{gs(driverTotal + helperTotal)}</td></tr></tbody></table></section>
+      <footer>FreteControl ERP · Informe mensual de bonificaciones · Valores expresados en guaraníes (PYG)</footer>
+    </article>
     {reportRow && <article className="individual-bonus-report">
       <header className="ibr-header"><h1>INFORME MENSUAL DE BONIFICACIONES</h1><div><span><strong>Periodo:</strong> {monthLabel}</span><span><strong>Vehículo:</strong> {reportRow.vehicles || "Sin vehículo"}</span><span><strong>Categoría:</strong> Ruta {reportRow.category}</span></div></header>
       <section className="ibr-section"><h2><b>1</b> INDICADORES DEL VEHÍCULO</h2><div className="ibr-indicators"><table><tbody><tr><td>Cantidad de viajes</td><td>{number.format(reportRow.trips)}</td></tr><tr><td>Distancia recorrida</td><td>{number.format(Math.round(reportRow.totalDistance))} km</td></tr><tr><td>Combustible consumido</td><td>{reportRow.totalLiters.toFixed(1).replace(".", ",")} litros</td></tr><tr><td>Consumo del mes anterior</td><td>{reportRow.previousConsumption ? `${reportRow.previousConsumption.toFixed(1).replace(".", ",")} km/l` : "Sin datos"}</td></tr><tr><td>Consumo del mes actual</td><td>{reportRow.consumption ? `${reportRow.consumption.toFixed(1).replace(".", ",")} km/l` : "Sin datos"}</td></tr></tbody></table><div className={`ibr-highlight ${improvement !== null && improvement < 0 ? "negative" : ""}`}>{improvementText}</div></div></section>
