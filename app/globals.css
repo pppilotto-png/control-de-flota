@@ -124,6 +124,7 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
   .sidebar,.topbar,.filter-panel,.print-button,.toast,.results-note,.report-tabs{display:none!important}
   .results-filter{padding:8px 12px}.results-filter label{display:none}.results-filter>div{padding:0;border:0}
   .app-shell{display:block}.workspace{padding:0}.results-layout{gap:12px}.results-heading{padding:12px;border:0;background:#fff}.result-kpis{grid-template-columns:repeat(4,1fr);gap:8px}.result-kpis article{padding:12px}.result-kpis strong{font-size:16px}.table-card{box-shadow:none;padding:10px}.table-scroll{overflow:visible}table{white-space:normal;font-size:9px}
+  body.printing-results-report .trip-results-table th:last-child,body.printing-results-report .trip-results-table td:last-child{display:none!important}
 }
 
 /* Financiero */
