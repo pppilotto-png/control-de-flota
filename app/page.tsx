@@ -18,7 +18,7 @@ type Branch = { id: number; name: string; active: boolean };
 type FleetStatus = "Activo" | "Taller" | "Inactivo";
 type Vehicle = { id: number; plate: string; active: boolean; fleetStatus?: FleetStatus; brand?: string; model?: string; year?: number; type?: string; branch?: string; currentKm?: number; insuranceExpiry?: string; inspectionExpiry?: string };
 type Driver = { id: number; name: string; active: boolean };
-type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; fullTank: boolean };
+type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; fullTank: boolean; importBatchId?: string; importedAt?: string; importFileName?: string };
 type ImportedFuel = Omit<FuelEntry, "id"> & { row: number; error?: string };
 type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; distance: number; cost: number; liters: number; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
 type MaintenanceType = "Preventivo" | "Correctivo" | "Neumáticos" | "Documentación" | "Otros";
@@ -359,6 +359,9 @@ export default function Home() {
       totalValue: Math.round(liters * pricePerLiter),
       odometer: Number(form.get("odometer") || 0),
       fullTank: form.get("fullTank") === "on",
+      importBatchId: editingFuel?.importBatchId,
+      importedAt: editingFuel?.importedAt,
+      importFileName: editingFuel?.importFileName,
     };
     setFuelEntries(editingFuel ? fuelEntries.map((entry) => entry.id === saved.id ? saved : entry) : [saved, ...fuelEntries]);
     setFuelModal(false);
@@ -535,7 +538,7 @@ export default function Home() {
           {operationalAlerts.length > 8 && <p className="alerts-more">Mostrando 8 de {operationalAlerts.length} alertas. Abra cada módulo para consultar todos.</p>}
         </section>
         <TripTable trips={filteredTrips.filter((trip) => trip.status !== "Finalizado")} rates={freightRates} onAll={() => setActive("trips")} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip}/>
-      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
+      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
     </section>
     {modal && <div className="modal-backdrop" onMouseDown={() => setModal(false)}><div className="modal trip-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setModal(false); setEditingTrip(null); setTripFormError(""); }} aria-label="Cerrar">×</button><p className="eyebrow">Operación</p><h2 id="modal-title">{editingTrip ? `Editar viaje N.º ${editingTrip.id}` : "Nuevo viaje"}</h2><p className="modal-intro">Registre los datos del viaje. Los pedidos y costos son opcionales y pueden agregarse después.</p>
@@ -839,7 +842,9 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
   function confirmImport() {
     if (!validRows.length || invalidRows.length) return;
     const firstId = allEntries.length ? Math.max(...allEntries.map((entry) => entry.id)) + 1 : 1;
-    const imported = validRows.map(({ row: _row, error: _error, ...entry }, index) => ({ ...entry, id: firstId + index }));
+    const importedAt = new Date().toISOString();
+    const importBatchId = `fuel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const imported = validRows.map(({ row: _row, error: _error, ...entry }, index) => ({ ...entry, id: firstId + index, importBatchId, importedAt, importFileName: importFile }));
     setEntries([...imported, ...allEntries]);
     setImportOpen(false);
     setImportRows([]);
@@ -1532,16 +1537,16 @@ function FleetModule({ vehicles, setVehicles, maintenance, setMaintenance, trips
   </section>;
 }
 
-function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers, setDrivers, rates, setRates, trips, snapshot, onRestore, onToast, users, setUsers, auditLog, trash, setTrash, currentEmail, helperAssignments, setHelperAssignments }: {
+function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers, setDrivers, rates, setRates, trips, fuelEntries, setFuelEntries, snapshot, onRestore, onToast, users, setUsers, auditLog, trash, setTrash, currentEmail, helperAssignments, setHelperAssignments }: {
   branches: Branch[]; setBranches: (branches: Branch[]) => void;
   vehicles: Vehicle[]; setVehicles: (vehicles: Vehicle[]) => void;
   drivers: Driver[]; setDrivers: (drivers: Driver[]) => void;
   rates: FreightRates; setRates: (rates: FreightRates) => void;
-  trips: Trip[]; snapshot: ErpSnapshot; onRestore: (snapshot: ErpSnapshot) => void; onToast: (message: string) => void;
+  trips: Trip[]; fuelEntries: FuelEntry[]; setFuelEntries: (entries: FuelEntry[]) => void; snapshot: ErpSnapshot; onRestore: (snapshot: ErpSnapshot) => void; onToast: (message: string) => void;
   users: ErpUser[]; setUsers: (users: ErpUser[]) => void; auditLog: AuditEntry[]; trash: TrashEntry[]; setTrash: (items: TrashEntry[]) => void; currentEmail: string;
   helperAssignments: HelperAssignment[]; setHelperAssignments: (items: HelperAssignment[]) => void;
 }) {
-  const [section, setSection] = useState<"branches" | "vehicles" | "drivers" | "helpers" | "rates" | "users" | "history" | "trash" | "backup">("branches");
+  const [section, setSection] = useState<"branches" | "vehicles" | "drivers" | "helpers" | "rates" | "fuelImports" | "users" | "history" | "trash" | "backup">("branches");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draftName, setDraftName] = useState("");
   const [editingUser, setEditingUser] = useState<ErpUser | null>(null);
@@ -1553,6 +1558,7 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
     drivers: ["Choferes", "Conductores habilitados", "♙"],
     helpers: ["Ayudantes", "Vínculo con choferes", "♧"],
     rates: ["Tipos de flete", "Porcentajes y reglas", "%"],
+    fuelImports: ["Importaciones", "Deshacer combustible", "↶"],
     users: ["Usuarios", "Accesos y perfiles", "♙"],
     history: ["Historial", "Registro de cambios", "↺"],
     trash: ["Papelera", "Registros recuperables", "♲"],
@@ -1560,6 +1566,11 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
   } as const;
   const resetDraft = () => { setEditingId(null); setDraftName(""); };
   const notify = (message: string, delay = 3600) => { onToast(message); setTimeout(() => onToast(""), delay); };
+  const fuelImportBatches = Array.from(new Set(fuelEntries.map((entry) => entry.importBatchId).filter(Boolean) as string[])).map((batchId) => {
+    const entries = fuelEntries.filter((entry) => entry.importBatchId === batchId);
+    return { batchId, entries, importedAt: entries[0]?.importedAt ?? "", fileName: entries[0]?.importFileName ?? "Planilla importada" };
+  }).sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+  const latestFuelImport = fuelImportBatches[0];
 
   function saveBranch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1668,6 +1679,24 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
     window.setTimeout(() => window.location.reload(), 700);
   }
 
+  function undoLatestFuelImport() {
+    if (!latestFuelImport) return;
+    const count = latestFuelImport.entries.length;
+    if (!window.confirm(`¿Deshacer la última importación de combustible?\n\nSe enviarán ${count} carga(s) del archivo “${latestFuelImport.fileName}” a la Papelera. Los registros manuales no serán alterados.`)) return;
+    const deletedAt = new Date().toISOString();
+    const removed = latestFuelImport.entries.map((entry) => ({
+      id: `fuel-import-${entry.id}-${Date.now()}`,
+      deletedAt,
+      deletedBy: currentEmail,
+      collection: "fuelEntries",
+      label: `Combustible ${entry.vehicle} · ${entry.date} · ${number.format(entry.liters)} L`,
+      record: entry as unknown as Record<string, unknown>,
+    }));
+    setFuelEntries(fuelEntries.filter((entry) => entry.importBatchId !== latestFuelImport.batchId));
+    setTrash([...removed, ...trash]);
+    notify(`${count} carga(s) de la última importación enviadas a la Papelera.`, 4600);
+  }
+
   return <section className="settings-layout">
     <aside className="settings-menu">
       <p className="eyebrow">Administración</p>
@@ -1742,6 +1771,16 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
         <div className="settings-heading"><div><p className="eyebrow">Reglas de cálculo</p><h2>Tipos de flete</h2><p>Defina el porcentaje aplicado al valor de cada pedido.</p></div><div className="branch-count"><strong>{freightTypes.length}</strong><span>tipos</span></div></div>
         <div className="rate-grid settings-rate-grid">{freightTypes.map((type) => <label key={type}>{type}<span><input type="number" min="0" max="100" step="0.01" value={rates[type]} onChange={(event) => setRates({ ...rates, [type]: Number(event.target.value) })}/>%</span><small>{money.format(10000000 * rates[type] / 100)} por cada ₲ 10.000.000</small></label>)}</div>
         <p className="settings-note">Los nuevos porcentajes se aplican automáticamente a los pedidos y resultados de los viajes.</p>
+      </div>}
+      {section === "fuelImports" && <div className="backup-settings">
+        <div className="settings-heading"><div><p className="eyebrow">Recuperación de datos</p><h2>Importaciones de combustible</h2><p>Revise las cargas agregadas por planilla y deshaga la importación más reciente si fue realizada por error.</p></div><div className="branch-count"><strong>{fuelImportBatches.length}</strong><span>importaciones</span></div></div>
+        {latestFuelImport ? <div className="backup-grid"><article>
+          <span className="backup-icon restore">↶</span>
+          <div><h3>Deshacer última importación</h3><p><strong>{latestFuelImport.fileName}</strong> · {latestFuelImport.entries.length} carga(s) · {latestFuelImport.importedAt ? new Intl.DateTimeFormat("es-PY", { dateStyle: "short", timeStyle: "short" }).format(new Date(latestFuelImport.importedAt)) : "Fecha no disponible"}</p><small>Las cargas serán enviadas a la Papelera y podrán restaurarse individualmente.</small></div>
+          <button className="delete-action" type="button" onClick={undoLatestFuelImport}>Deshacer importación</button>
+        </article></div> : <div className="table-card"><div className="no-results">Todavía no hay importaciones de combustible que se puedan deshacer. Las próximas importaciones quedarán registradas aquí.</div></div>}
+        {fuelImportBatches.length > 0 && <div className="table-card"><div className="table-scroll"><table><thead><tr><th>Fecha y hora</th><th>Archivo</th><th>Cargas</th><th>Vehículos</th><th>Estado</th></tr></thead><tbody>{fuelImportBatches.map((batch, index) => <tr key={batch.batchId}><td>{batch.importedAt ? new Intl.DateTimeFormat("es-PY", { dateStyle: "short", timeStyle: "short" }).format(new Date(batch.importedAt)) : "—"}</td><td><strong>{batch.fileName}</strong></td><td>{batch.entries.length}</td><td>{new Set(batch.entries.map((entry) => entry.vehicle)).size}</td><td><span className={`branch-status ${index === 0 ? "active" : ""}`}>{index === 0 ? "Última importación" : "Anterior"}</span></td></tr>)}</tbody></table></div></div>}
+        <p className="settings-note">Solo se deshace la importación más reciente para preservar el orden de los datos. Las cargas registradas manualmente nunca se incluyen en esta acción.</p>
       </div>}
       {section === "users" && <div className="security-settings">
         <div className="settings-heading"><div><p className="eyebrow">Control de acceso</p><h2>Usuarios y perfiles</h2><p>Autorice correos y defina lo que cada persona puede hacer.</p></div><div className="branch-count"><strong>{users.filter((user) => user.active).length}</strong><span>activos</span></div></div>
