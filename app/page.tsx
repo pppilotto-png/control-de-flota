@@ -19,6 +19,7 @@ type FleetStatus = "Activo" | "Taller" | "Inactivo";
 type Vehicle = { id: number; plate: string; active: boolean; fleetStatus?: FleetStatus; brand?: string; model?: string; year?: number; type?: string; branch?: string; currentKm?: number; insuranceExpiry?: string; inspectionExpiry?: string };
 type Driver = { id: number; name: string; active: boolean };
 type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; fullTank: boolean };
+type ImportedFuel = Omit<FuelEntry, "id"> & { row: number; error?: string };
 type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; distance: number; cost: number; liters: number; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
 type MaintenanceType = "Preventivo" | "Correctivo" | "Neumáticos" | "Documentación" | "Otros";
 type Maintenance = { id: number; vehicle: string; date: string; type: MaintenanceType; description: string; km: number; value: number; nextDate?: string; nextKm?: number };
@@ -534,7 +535,7 @@ export default function Home() {
           {operationalAlerts.length > 8 && <p className="alerts-more">Mostrando 8 de {operationalAlerts.length} alertas. Abra cada módulo para consultar todos.</p>}
         </section>
         <TripTable trips={filteredTrips.filter((trip) => trip.status !== "Finalizado")} rates={freightRates} onAll={() => setActive("trips")} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip}/>
-      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
+      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
     </section>
     {modal && <div className="modal-backdrop" onMouseDown={() => setModal(false)}><div className="modal trip-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setModal(false); setEditingTrip(null); setTripFormError(""); }} aria-label="Cerrar">×</button><p className="eyebrow">Operación</p><h2 id="modal-title">{editingTrip ? `Editar viaje N.º ${editingTrip.id}` : "Nuevo viaje"}</h2><p className="modal-intro">Registre los datos del viaje. Los pedidos y costos son opcionales y pueden agregarse después.</p>
@@ -755,8 +756,96 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
   </div>;
 }
 
-function FuelModule({ entries, vehicleFilter, trips, cycles, openCycles, onNew, onEdit }: { entries: FuelEntry[]; vehicleFilter: string; trips: Trip[]; cycles: FuelCycle[]; openCycles: { vehicle: string; startOdometer: number; entries: FuelEntry[] }[]; onNew: () => void; onEdit: (entry: FuelEntry) => void }) {
+function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, trips, cycles, openCycles, onToast, onNew, onEdit }: { entries: FuelEntry[]; allEntries: FuelEntry[]; setEntries: (entries: FuelEntry[]) => void; vehicles: Vehicle[]; vehicleFilter: string; trips: Trip[]; cycles: FuelCycle[]; openCycles: { vehicle: string; startOdometer: number; entries: FuelEntry[] }[]; onToast: (message: string) => void; onNew: () => void; onEdit: (entry: FuelEntry) => void }) {
   const [reportOpen, setReportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState("");
+  const [importRows, setImportRows] = useState<ImportedFuel[]>([]);
+  const [importBusy, setImportBusy] = useState(false);
+  const validRows = importRows.filter((row) => !row.error);
+  const invalidRows = importRows.filter((row) => row.error);
+  const normalizeHeader = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const pick = (record: Record<string, unknown>, names: string[]) => Object.entries(record).find(([key]) => names.includes(normalizeHeader(key)))?.[1];
+  const parseNumber = (value: unknown) => {
+    if (typeof value === "number") return value;
+    const raw = String(value ?? "").trim().replace(/[₲\s]/g, "");
+    if (!raw) return 0;
+    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw)) return Number(raw.replace(/\./g, "").replace(",", "."));
+    if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw)) return Number(raw.replace(/,/g, ""));
+    return Number(raw.replace(",", ".")) || 0;
+  };
+  const normalizeDate = (value: unknown) => {
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (typeof value === "number") {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      excelEpoch.setUTCDate(excelEpoch.getUTCDate() + value);
+      return excelEpoch.toISOString().slice(0, 10);
+    }
+    const raw = String(value ?? "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const match = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+    return match ? `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}` : "";
+  };
+  const parseFullTank = (value: unknown) => ["si", "s", "true", "1", "completo", "lleno"].includes(normalizeHeader(String(value ?? "")));
+
+  async function readFuelFile(file?: File) {
+    if (!file) return;
+    setImportBusy(true);
+    setImportFile(file.name);
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const records = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "", raw: true });
+      const existing = new Set(allEntries.map((entry) => `${entry.date}|${normalizeHeader(entry.vehicle)}|${entry.odometer}|${entry.liters}|${entry.pricePerLiter}|${normalizeHeader(entry.station)}`));
+      const seen = new Set<string>();
+      setImportRows(records.map((record, index) => {
+        const row = index + 2;
+        const date = normalizeDate(pick(record, ["fecha", "data"]));
+        const vehicle = String(pick(record, ["chapa", "placa", "vehiculo", "veiculo"]) ?? "").trim().toUpperCase();
+        const station = String(pick(record, ["estacion", "puesto", "proveedor"]) ?? "").trim();
+        const odometer = Math.round(parseNumber(pick(record, ["odometro", "hodometro", "kilometraje", "km"])));
+        const liters = parseNumber(pick(record, ["litros", "cantidadlitros", "volumen"]));
+        const pricePerLiter = Math.round(parseNumber(pick(record, ["precioporlitro", "preciolitro", "valorporlitro", "valorlitro", "precio"])));
+        const fullTank = parseFullTank(pick(record, ["tanquecompleto", "tanquelleno", "completo"]));
+        const totalValue = Math.round(liters * pricePerLiter);
+        const errors: string[] = [];
+        if (!date || Number.isNaN(new Date(`${date}T12:00:00`).getTime())) errors.push("Fecha inválida");
+        if (!vehicle || !vehicles.some((item) => normalizeHeader(item.plate) === normalizeHeader(vehicle) && item.active)) errors.push("Chapa no registrada o inactiva");
+        if (odometer < 0) errors.push("Odómetro inválido");
+        if (liters <= 0) errors.push("Litros inválidos");
+        if (pricePerLiter <= 0) errors.push("Precio/L inválido");
+        const key = `${date}|${normalizeHeader(vehicle)}|${odometer}|${liters}|${pricePerLiter}|${normalizeHeader(station)}`;
+        if (existing.has(key) || seen.has(key)) errors.push("Carga duplicada");
+        seen.add(key);
+        return { row, date, vehicle, station, odometer, liters, pricePerLiter, totalValue, fullTank, error: errors.join(" · ") || undefined };
+      }));
+    } catch {
+      setImportRows([]);
+      onToast("No se pudo leer el archivo de combustible. Use el modelo indicado.");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function downloadTemplate() {
+    const XLSX = await import("xlsx");
+    const sheet = XLSX.utils.json_to_sheet([{ Fecha: new Date().toISOString().slice(0, 10), Chapa: vehicles.find((vehicle) => vehicle.active)?.plate ?? "AAUC019", Estación: "Estación de servicio", Odómetro: 30000, Litros: 120.5, "Precio por litro": 6750, "Tanque completo": "Sí" }]);
+    sheet["!cols"] = [{ wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 18 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Combustible");
+    XLSX.writeFile(workbook, "modelo_importacion_combustible.xlsx");
+  }
+
+  function confirmImport() {
+    if (!validRows.length || invalidRows.length) return;
+    const firstId = allEntries.length ? Math.max(...allEntries.map((entry) => entry.id)) + 1 : 1;
+    const imported = validRows.map(({ row: _row, error: _error, ...entry }, index) => ({ ...entry, id: firstId + index }));
+    setEntries([...imported, ...allEntries]);
+    setImportOpen(false);
+    setImportRows([]);
+    setImportFile("");
+    onToast(`${imported.length} carga(s) de combustible importada(s) correctamente.`);
+  }
   const reportCycles = vehicleFilter ? cycles.filter((cycle) => cycle.vehicle === vehicleFilter) : cycles;
   const reportOpenCycles = vehicleFilter ? openCycles.filter((cycle) => cycle.vehicle === vehicleFilter) : openCycles;
   const totalLiters = entries.reduce((sum, entry) => sum + entry.liters, 0);
@@ -774,10 +863,19 @@ function FuelModule({ entries, vehicleFilter, trips, cycles, openCycles, onNew, 
     <div className="cost-summary fuel-summary">
       <div><p className="eyebrow">Control de consumo</p><h2>Cargas de combustible</h2><p>Registre las cargas y consulte el consumo general de la flota.</p></div>
       <div className="fuel-kpis"><span><small>Valor total</small><strong>{money.format(totalValue)}</strong></span><span><small>Litros</small><strong>{number.format(totalLiters)} L</strong></span><span><small>Promedio general</small><strong>{averageConsumption ? `${averageConsumption.toFixed(2)} km/L` : "—"}</strong></span></div>
-      <div className="fuel-actions"><button className="secondary" onClick={() => setReportOpen(true)}><Icon name="report"/>Generar informe</button><button className="primary" onClick={onNew}><Icon name="plus"/>Nueva carga</button></div>
+      <div className="fuel-actions"><button className="secondary" onClick={() => void downloadTemplate()}>↓ Modelo Excel</button><button className="secondary" onClick={() => setImportOpen(true)}>▤ Importar Excel</button><button className="secondary" onClick={() => setReportOpen(true)}><Icon name="report"/>Generar informe</button><button className="primary" onClick={onNew}><Icon name="plus"/>Nueva carga</button></div>
     </div>
     <div className="fuel-vehicle-grid">{consumptionByVehicle.map((item) => <article key={item.vehicle}><span className="fuel-pump"><Icon name="fuel"/></span><div><small>{item.vehicle}</small><strong>{item.average ? `${item.average.toFixed(2)} km/L` : "Aguardando otra carga completa"}</strong><em>{item.distance ? `${number.format(item.distance)} km medidos` : "Sin intervalo calculable"}</em></div></article>)}</div>
     <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Historial</p><h2>Cargas registradas</h2></div><strong>{entries.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Chapa</th><th>Estación</th><th>Hodómetro</th><th>Litros</th><th>Precio/L</th><th>Valor total</th><th>Tanque</th><th>Acciones</th></tr></thead><tbody>{entries.length === 0 ? <tr><td className="no-results" colSpan={10}>No hay cargas con los filtros seleccionados.</td></tr> : entries.map((entry) => <tr key={entry.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${entry.date}T12:00:00`))}</td><td>{entry.tripId ? <strong>N.º {entry.tripId}</strong> : <span className="unlinked-badge">Por chapa</span>}<small>{entry.tripId ? trips.find((trip) => trip.id === entry.tripId)?.driver : "Sin viaje específico"}</small></td><td><strong>{entry.vehicle}</strong></td><td>{entry.station || "—"}</td><td>{number.format(entry.odometer)} km</td><td>{number.format(entry.liters)} L</td><td>{money.format(entry.pricePerLiter ?? (entry.liters > 0 ? entry.totalValue / entry.liters : 0))}</td><td><strong>{money.format(entry.totalValue)}</strong></td><td><span className={entry.fullTank ? "branch-status active" : "branch-status"}>{entry.fullTank ? "Completo" : "Parcial"}</span></td><td><button className="edit-action" onClick={() => onEdit(entry)}>Editar</button></td></tr>)}</tbody></table></div></div>
+    {importOpen && <div className="modal-backdrop" onMouseDown={() => setImportOpen(false)}><div className="modal orders-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-fuel-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button className="close" onClick={() => setImportOpen(false)} aria-label="Cerrar">×</button><p className="eyebrow">Carga masiva</p><h2 id="import-fuel-title">Importar combustible</h2><p className="modal-intro">Columnas requeridas: Fecha, Chapa, Estación, Odómetro, Litros, Precio por litro y Tanque completo.</p>
+      <label className="excel-drop"><input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" onChange={(event) => void readFuelFile(event.target.files?.[0])}/><span>▤</span><strong>{importBusy ? "Leyendo archivo…" : importFile || "Seleccionar archivo Excel"}</strong><small>Excel, XLS o CSV · primera hoja del archivo</small></label>
+      {importRows.length > 0 && <><div className="import-summary"><span className="ok"><strong>{validRows.length}</strong><small>válidos</small></span><span className={invalidRows.length ? "error" : "ok"}><strong>{invalidRows.length}</strong><small>con error</small></span><span><strong>{new Set(validRows.map((row) => row.vehicle)).size}</strong><small>vehículos</small></span></div>
+        <div className="import-preview"><table><thead><tr><th>Línea</th><th>Fecha</th><th>Chapa</th><th>Estación</th><th>Odómetro</th><th>Litros</th><th>Precio/L</th><th>Total</th><th>Tanque</th><th>Validación</th></tr></thead><tbody>{importRows.map((row) => <tr key={row.row} className={row.error ? "invalid" : ""}><td>{row.row}</td><td>{row.date || "—"}</td><td>{row.vehicle || "—"}</td><td>{row.station || "—"}</td><td>{number.format(row.odometer)} km</td><td>{number.format(row.liters)} L</td><td>{row.pricePerLiter ? money.format(row.pricePerLiter) : "—"}</td><td>{row.totalValue ? money.format(row.totalValue) : "—"}</td><td>{row.fullTank ? "Completo" : "Parcial"}</td><td>{row.error ? <span className="import-error">⚠ {row.error}</span> : <span className="import-ok">✓ Listo</span>}</td></tr>)}</tbody></table></div>
+      </>}
+      <p className="import-note">El total se calcula automáticamente. Para proteger los datos, ninguna línea se guarda hasta que todo el archivo pase la validación.</p>
+      <div className="form-actions"><button className="secondary" type="button" onClick={() => setImportOpen(false)}>Cancelar</button><button className="primary" type="button" disabled={!validRows.length || invalidRows.length > 0 || importBusy} onClick={confirmImport}>Importar {validRows.length || ""} carga(s)</button></div>
+    </div></div>}
     {reportOpen && <FuelReport entries={entries} vehicleFilter={vehicleFilter} cycles={reportCycles} openCycles={reportOpenCycles} onClose={() => setReportOpen(false)}/>} 
   </section>;
 }
