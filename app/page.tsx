@@ -4,21 +4,22 @@ import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react
 import QRCode from "qrcode";
 
 type FreightType = "Local" | "Nacional" | "Dobro" | "Devolución" | "Remisión";
-type Order = { invoice: string; order: string; client: string; amount: number; freightType: FreightType };
+type ImportMetadata = { importBatchId?: string; importedAt?: string; importFileName?: string };
+type Order = { invoice: string; order: string; client: string; amount: number; freightType: FreightType } & ImportMetadata;
 type ImportedOrder = Order & { row: number; tripId: number; error?: string };
 type FreightRates = Record<FreightType, number>;
 type TripStatus = "En curso" | "En tránsito" | "Cargando" | "Pendiente" | "Finalizado";
-type Trip = { id: number; branch: string; startDate: string; endDate?: string; driver: string; helper?: string; vehicle: string; status: TripStatus; kmInitial: number; kmFinal: number; orders: Order[] };
+type Trip = { id: number; branch: string; startDate: string; endDate?: string; driver: string; helper?: string; vehicle: string; status: TripStatus; kmInitial: number; kmFinal: number; orders: Order[] } & ImportMetadata;
 type ImportedTrip = Trip & { row: number; error?: string };
 type CostType = "Consumición" | "Peaje" | "Tape" | "Hospedaje" | "Reparo/Mantenimiento" | "Otros";
-type TripCost = { id: number; tripId: number; date: string; type: CostType; description: string; quantity: number; unitValue: number };
+type TripCost = { id: number; tripId: number; date: string; type: CostType; description: string; quantity: number; unitValue: number } & ImportMetadata;
 type ImportedCost = Omit<TripCost, "id"> & { row: number; error?: string };
 type Filters = { dateFrom: string; dateTo: string; branch: string; vehicle: string; driver: string; status: string };
 type Branch = { id: number; name: string; active: boolean };
 type FleetStatus = "Activo" | "Taller" | "Inactivo";
 type Vehicle = { id: number; plate: string; active: boolean; fleetStatus?: FleetStatus; brand?: string; model?: string; year?: number; type?: string; branch?: string; currentKm?: number; insuranceExpiry?: string; inspectionExpiry?: string };
 type Driver = { id: number; name: string; active: boolean };
-type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; fullTank: boolean; importBatchId?: string; importedAt?: string; importFileName?: string };
+type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; fullTank: boolean } & ImportMetadata;
 type ImportedFuel = Omit<FuelEntry, "id"> & { row: number; error?: string };
 type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; distance: number; cost: number; liters: number; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
 type MaintenanceType = "Preventivo" | "Correctivo" | "Neumáticos" | "Documentación" | "Otros";
@@ -333,6 +334,9 @@ export default function Home() {
       description: String(form.get("description") || ""),
       quantity: Number(form.get("quantity") || 1),
       unitValue: Number(form.get("unitValue") || 0),
+      importBatchId: editingCost?.importBatchId,
+      importedAt: editingCost?.importedAt,
+      importFileName: editingCost?.importFileName,
     };
     setTripCosts(editingCost ? tripCosts.map((cost) => cost.id === saved.id ? saved : cost) : [saved, ...tripCosts]);
     setCostModal(false);
@@ -373,8 +377,8 @@ export default function Home() {
   function saveTrip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const orders = invoiceRows.map((row) => ({ invoice: String(form.get(`invoice-${row.id}`) || ""), order: String(form.get(`order-${row.id}`) || ""), client: String(form.get(`client-${row.id}`) || ""), amount: Number(form.get(`amount-${row.id}`) || 0), freightType: String(form.get(`freightType-${row.id}`) || "Local") as FreightType })).filter((order) => order.invoice && order.order && order.client && order.amount > 0);
-    const saved: Trip = { id: editingTrip?.id ?? (trips.length ? Math.max(...trips.map((trip) => trip.id)) + 1 : 1), branch: String(form.get("branch") || ""), startDate: String(form.get("startDate") || ""), endDate: String(form.get("endDate") || "") || undefined, driver: String(form.get("driver") || "Por definir"), helper: String(form.get("helper") || "") || undefined, vehicle: String(form.get("vehicle") || "Por definir"), status: String(form.get("status") || "Pendiente") as TripStatus, kmInitial: Number(form.get("kmInitial") || 0), kmFinal: Number(form.get("kmFinal") || 0), orders };
+    const orders = invoiceRows.map((row, index) => ({ invoice: String(form.get(`invoice-${row.id}`) || ""), order: String(form.get(`order-${row.id}`) || ""), client: String(form.get(`client-${row.id}`) || ""), amount: Number(form.get(`amount-${row.id}`) || 0), freightType: String(form.get(`freightType-${row.id}`) || "Local") as FreightType, importBatchId: editingTrip?.orders[index]?.importBatchId, importedAt: editingTrip?.orders[index]?.importedAt, importFileName: editingTrip?.orders[index]?.importFileName })).filter((order) => order.invoice && order.order && order.client && order.amount > 0);
+    const saved: Trip = { id: editingTrip?.id ?? (trips.length ? Math.max(...trips.map((trip) => trip.id)) + 1 : 1), branch: String(form.get("branch") || ""), startDate: String(form.get("startDate") || ""), endDate: String(form.get("endDate") || "") || undefined, driver: String(form.get("driver") || "Por definir"), helper: String(form.get("helper") || "") || undefined, vehicle: String(form.get("vehicle") || "Por definir"), status: String(form.get("status") || "Pendiente") as TripStatus, kmInitial: Number(form.get("kmInitial") || 0), kmFinal: Number(form.get("kmFinal") || 0), orders, importBatchId: editingTrip?.importBatchId, importedAt: editingTrip?.importedAt, importFileName: editingTrip?.importFileName };
     if (!saved.branch || !saved.startDate || !saved.driver || !saved.vehicle) {
       setTripTab("data");
       setTripFormError("Complete sucursal, chapa, chofer y fecha inicial.");
@@ -538,7 +542,7 @@ export default function Home() {
           {operationalAlerts.length > 8 && <p className="alerts-more">Mostrando 8 de {operationalAlerts.length} alertas. Abra cada módulo para consultar todos.</p>}
         </section>
         <TripTable trips={filteredTrips.filter((trip) => trip.status !== "Finalizado")} rates={freightRates} onAll={() => setActive("trips")} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip}/>
-      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
+      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesModule trips={trips} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setServiceRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} setTrips={setTrips} tripCosts={tripCosts} setTripCosts={setTripCosts} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
     </section>
     {modal && <div className="modal-backdrop" onMouseDown={() => setModal(false)}><div className="modal trip-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setModal(false); setEditingTrip(null); setTripFormError(""); }} aria-label="Cerrar">×</button><p className="eyebrow">Operación</p><h2 id="modal-title">{editingTrip ? `Editar viaje N.º ${editingTrip.id}` : "Nuevo viaje"}</h2><p className="modal-intro">Registre los datos del viaje. Los pedidos y costos son opcionales y pueden agregarse después.</p>
@@ -1537,12 +1541,12 @@ function FleetModule({ vehicles, setVehicles, maintenance, setMaintenance, trips
   </section>;
 }
 
-function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers, setDrivers, rates, setRates, trips, fuelEntries, setFuelEntries, snapshot, onRestore, onToast, users, setUsers, auditLog, trash, setTrash, currentEmail, helperAssignments, setHelperAssignments }: {
+function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers, setDrivers, rates, setRates, trips, setTrips, tripCosts, setTripCosts, fuelEntries, setFuelEntries, snapshot, onRestore, onToast, users, setUsers, auditLog, trash, setTrash, currentEmail, helperAssignments, setHelperAssignments }: {
   branches: Branch[]; setBranches: (branches: Branch[]) => void;
   vehicles: Vehicle[]; setVehicles: (vehicles: Vehicle[]) => void;
   drivers: Driver[]; setDrivers: (drivers: Driver[]) => void;
   rates: FreightRates; setRates: (rates: FreightRates) => void;
-  trips: Trip[]; fuelEntries: FuelEntry[]; setFuelEntries: (entries: FuelEntry[]) => void; snapshot: ErpSnapshot; onRestore: (snapshot: ErpSnapshot) => void; onToast: (message: string) => void;
+  trips: Trip[]; setTrips: (trips: Trip[]) => void; tripCosts: TripCost[]; setTripCosts: (costs: TripCost[]) => void; fuelEntries: FuelEntry[]; setFuelEntries: (entries: FuelEntry[]) => void; snapshot: ErpSnapshot; onRestore: (snapshot: ErpSnapshot) => void; onToast: (message: string) => void;
   users: ErpUser[]; setUsers: (users: ErpUser[]) => void; auditLog: AuditEntry[]; trash: TrashEntry[]; setTrash: (items: TrashEntry[]) => void; currentEmail: string;
   helperAssignments: HelperAssignment[]; setHelperAssignments: (items: HelperAssignment[]) => void;
 }) {
@@ -1558,7 +1562,7 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
     drivers: ["Choferes", "Conductores habilitados", "♙"],
     helpers: ["Ayudantes", "Vínculo con choferes", "♧"],
     rates: ["Tipos de flete", "Porcentajes y reglas", "%"],
-    fuelImports: ["Importaciones", "Deshacer combustible", "↶"],
+    fuelImports: ["Importaciones", "Viajes, pedidos, costos y combustible", "↶"],
     users: ["Usuarios", "Accesos y perfiles", "♙"],
     history: ["Historial", "Registro de cambios", "↺"],
     trash: ["Papelera", "Registros recuperables", "♲"],
@@ -1566,11 +1570,21 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
   } as const;
   const resetDraft = () => { setEditingId(null); setDraftName(""); };
   const notify = (message: string, delay = 3600) => { onToast(message); setTimeout(() => onToast(""), delay); };
-  const fuelImportBatches = Array.from(new Set(fuelEntries.map((entry) => entry.importBatchId).filter(Boolean) as string[])).map((batchId) => {
-    const entries = fuelEntries.filter((entry) => entry.importBatchId === batchId);
-    return { batchId, entries, importedAt: entries[0]?.importedAt ?? "", fileName: entries[0]?.importFileName ?? "Planilla importada" };
-  }).sort((a, b) => b.importedAt.localeCompare(a.importedAt));
-  const latestFuelImport = fuelImportBatches[0];
+  type ImportModule = "Viajes" | "Pedidos" | "Costos" | "Combustible";
+  type ImportBatch = { batchId: string; module: ImportModule; importedAt: string; fileName: string; count: number };
+  const makeBatches = (module: ImportModule, items: ImportMetadata[]) => Array.from(new Set(items.map((item) => item.importBatchId).filter(Boolean) as string[])).map((batchId): ImportBatch => {
+    const entries = items.filter((item) => item.importBatchId === batchId);
+    return { batchId, module, importedAt: entries[0]?.importedAt ?? "", fileName: entries[0]?.importFileName ?? "Planilla importada", count: entries.length };
+  });
+  const importedOrders = trips.flatMap((trip) => trip.orders);
+  const importBatches = [
+    ...makeBatches("Viajes", trips),
+    ...makeBatches("Pedidos", importedOrders),
+    ...makeBatches("Costos", tripCosts),
+    ...makeBatches("Combustible", fuelEntries),
+  ].sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+  const latestBatchByModule = new Map<ImportModule, string>();
+  importBatches.forEach((batch) => { if (!latestBatchByModule.has(batch.module)) latestBatchByModule.set(batch.module, batch.batchId); });
 
   function saveBranch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1679,22 +1693,31 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
     window.setTimeout(() => window.location.reload(), 700);
   }
 
-  function undoLatestFuelImport() {
-    if (!latestFuelImport) return;
-    const count = latestFuelImport.entries.length;
-    if (!window.confirm(`¿Deshacer la última importación de combustible?\n\nSe enviarán ${count} carga(s) del archivo “${latestFuelImport.fileName}” a la Papelera. Los registros manuales no serán alterados.`)) return;
+  function undoImport(batch: ImportBatch) {
+    if (latestBatchByModule.get(batch.module) !== batch.batchId) return notify("Solo se puede deshacer la última importación de cada módulo.", 4200);
+    const importedTrips = trips.filter((trip) => trip.importBatchId === batch.batchId);
+    if (batch.module === "Viajes" && importedTrips.some((trip) => trip.orders.length || tripCosts.some((cost) => cost.tripId === trip.id))) return notify("Estos viajes ya tienen pedidos o costos vinculados. Deshaga primero esas importaciones.", 5200);
+    if (!window.confirm(`¿Deshacer la última importación de ${batch.module.toLowerCase()}?\n\nSe enviarán ${batch.count} registro(s) del archivo “${batch.fileName}” a la Papelera. Los registros manuales no serán alterados.`)) return;
     const deletedAt = new Date().toISOString();
-    const removed = latestFuelImport.entries.map((entry) => ({
-      id: `fuel-import-${entry.id}-${Date.now()}`,
-      deletedAt,
-      deletedBy: currentEmail,
-      collection: "fuelEntries",
-      label: `Combustible ${entry.vehicle} · ${entry.date} · ${number.format(entry.liters)} L`,
-      record: entry as unknown as Record<string, unknown>,
-    }));
-    setFuelEntries(fuelEntries.filter((entry) => entry.importBatchId !== latestFuelImport.batchId));
+    const baseTrash = { deletedAt, deletedBy: currentEmail };
+    let removed: TrashEntry[] = [];
+    if (batch.module === "Viajes") {
+      removed = importedTrips.map((trip) => ({ ...baseTrash, id: `trip-import-${trip.id}-${Date.now()}`, collection: "trips", label: `Viaje N.º ${trip.id} · ${trip.vehicle}`, record: trip as unknown as Record<string, unknown> }));
+      setTrips(trips.filter((trip) => trip.importBatchId !== batch.batchId));
+    } else if (batch.module === "Pedidos") {
+      trips.forEach((trip) => trip.orders.filter((order) => order.importBatchId === batch.batchId).forEach((order, index) => removed.push({ ...baseTrash, id: `order-import-${trip.id}-${index}-${Date.now()}`, collection: "orders", label: `Pedido ${order.order} · Viaje N.º ${trip.id}`, record: { ...order, tripId: trip.id } })));
+      setTrips(trips.map((trip) => ({ ...trip, orders: trip.orders.filter((order) => order.importBatchId !== batch.batchId) })));
+    } else if (batch.module === "Costos") {
+      const costs = tripCosts.filter((cost) => cost.importBatchId === batch.batchId);
+      removed = costs.map((cost) => ({ ...baseTrash, id: `cost-import-${cost.id}-${Date.now()}`, collection: "tripCosts", label: `Costo N.º ${cost.id} · Viaje N.º ${cost.tripId}`, record: cost as unknown as Record<string, unknown> }));
+      setTripCosts(tripCosts.filter((cost) => cost.importBatchId !== batch.batchId));
+    } else {
+      const fuel = fuelEntries.filter((entry) => entry.importBatchId === batch.batchId);
+      removed = fuel.map((entry) => ({ ...baseTrash, id: `fuel-import-${entry.id}-${Date.now()}`, collection: "fuelEntries", label: `Combustible ${entry.vehicle} · ${entry.date} · ${number.format(entry.liters)} L`, record: entry as unknown as Record<string, unknown> }));
+      setFuelEntries(fuelEntries.filter((entry) => entry.importBatchId !== batch.batchId));
+    }
     setTrash([...removed, ...trash]);
-    notify(`${count} carga(s) de la última importación enviadas a la Papelera.`, 4600);
+    notify(`${removed.length} registro(s) de ${batch.module.toLowerCase()} enviados a la Papelera.`, 4600);
   }
 
   return <section className="settings-layout">
@@ -1773,14 +1796,12 @@ function SettingsModule({ branches, setBranches, vehicles, setVehicles, drivers,
         <p className="settings-note">Los nuevos porcentajes se aplican automáticamente a los pedidos y resultados de los viajes.</p>
       </div>}
       {section === "fuelImports" && <div className="backup-settings">
-        <div className="settings-heading"><div><p className="eyebrow">Recuperación de datos</p><h2>Importaciones de combustible</h2><p>Revise las cargas agregadas por planilla y deshaga la importación más reciente si fue realizada por error.</p></div><div className="branch-count"><strong>{fuelImportBatches.length}</strong><span>importaciones</span></div></div>
-        {latestFuelImport ? <div className="backup-grid"><article>
-          <span className="backup-icon restore">↶</span>
-          <div><h3>Deshacer última importación</h3><p><strong>{latestFuelImport.fileName}</strong> · {latestFuelImport.entries.length} carga(s) · {latestFuelImport.importedAt ? new Intl.DateTimeFormat("es-PY", { dateStyle: "short", timeStyle: "short" }).format(new Date(latestFuelImport.importedAt)) : "Fecha no disponible"}</p><small>Las cargas serán enviadas a la Papelera y podrán restaurarse individualmente.</small></div>
-          <button className="delete-action" type="button" onClick={undoLatestFuelImport}>Deshacer importación</button>
-        </article></div> : <div className="table-card"><div className="no-results">Todavía no hay importaciones de combustible que se puedan deshacer. Las próximas importaciones quedarán registradas aquí.</div></div>}
-        {fuelImportBatches.length > 0 && <div className="table-card"><div className="table-scroll"><table><thead><tr><th>Fecha y hora</th><th>Archivo</th><th>Cargas</th><th>Vehículos</th><th>Estado</th></tr></thead><tbody>{fuelImportBatches.map((batch, index) => <tr key={batch.batchId}><td>{batch.importedAt ? new Intl.DateTimeFormat("es-PY", { dateStyle: "short", timeStyle: "short" }).format(new Date(batch.importedAt)) : "—"}</td><td><strong>{batch.fileName}</strong></td><td>{batch.entries.length}</td><td>{new Set(batch.entries.map((entry) => entry.vehicle)).size}</td><td><span className={`branch-status ${index === 0 ? "active" : ""}`}>{index === 0 ? "Última importación" : "Anterior"}</span></td></tr>)}</tbody></table></div></div>}
-        <p className="settings-note">Solo se deshace la importación más reciente para preservar el orden de los datos. Las cargas registradas manualmente nunca se incluyen en esta acción.</p>
+        <div className="settings-heading"><div><p className="eyebrow">Recuperación de datos</p><h2>Importaciones por planilla</h2><p>Administre las importaciones de viajes, pedidos, costos y combustible desde un solo lugar.</p></div><div className="branch-count"><strong>{importBatches.length}</strong><span>importaciones</span></div></div>
+        {importBatches.length ? <div className="table-card"><div className="table-scroll"><table><thead><tr><th>Fecha y hora</th><th>Módulo</th><th>Archivo</th><th>Registros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>{importBatches.map((batch) => {
+          const isLatest = latestBatchByModule.get(batch.module) === batch.batchId;
+          return <tr key={batch.batchId}><td>{batch.importedAt ? new Intl.DateTimeFormat("es-PY", { dateStyle: "short", timeStyle: "short" }).format(new Date(batch.importedAt)) : "—"}</td><td><span className="cost-badge">{batch.module}</span></td><td><strong>{batch.fileName}</strong></td><td>{batch.count}</td><td><span className={`branch-status ${isLatest ? "active" : ""}`}>{isLatest ? "Última del módulo" : "Anterior"}</span></td><td>{isLatest ? <button className="delete-action" type="button" onClick={() => undoImport(batch)}>Deshacer</button> : <span className="muted-value">—</span>}</td></tr>;
+        })}</tbody></table></div></div> : <div className="table-card"><div className="no-results">Todavía no hay importaciones que se puedan deshacer. Las próximas quedarán registradas aquí.</div></div>}
+        <p className="settings-note">Puede deshacer la última importación de cada módulo. Los registros se envían a la Papelera y los datos creados manualmente no son alterados.</p>
       </div>}
       {section === "users" && <div className="security-settings">
         <div className="settings-heading"><div><p className="eyebrow">Control de acceso</p><h2>Usuarios y perfiles</h2><p>Autorice correos y defina lo que cada persona puede hacer.</p></div><div className="branch-count"><strong>{users.filter((user) => user.active).length}</strong><span>activos</span></div></div>
@@ -1945,7 +1966,9 @@ function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, dri
 
   function confirmImport() {
     if (!validRows.length || invalidRows.length) return;
-    const imported = validRows.map(({ row: _row, error: _error, ...trip }) => trip);
+    const importedAt = new Date().toISOString();
+    const importBatchId = `trips-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const imported = validRows.map(({ row: _row, error: _error, ...trip }) => ({ ...trip, importBatchId, importedAt, importFileName: importFile }));
     setTrips([...imported, ...allTrips].sort((a, b) => b.id - a.id));
     setImportOpen(false);
     setImportRows([]);
@@ -2063,8 +2086,10 @@ function OrdersModule({ trips, allTrips, setTrips, rates, setRates, onEdit, onTo
 
   function confirmImport() {
     if (!validRows.length || invalidRows.length) return;
+    const importedAt = new Date().toISOString();
+    const importBatchId = `orders-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const rowsByTrip = new Map<number, Order[]>();
-    validRows.forEach(({ tripId, row: _row, error: _error, ...order }) => rowsByTrip.set(tripId, [...(rowsByTrip.get(tripId) ?? []), order]));
+    validRows.forEach(({ tripId, row: _row, error: _error, ...order }) => rowsByTrip.set(tripId, [...(rowsByTrip.get(tripId) ?? []), { ...order, importBatchId, importedAt, importFileName: importFile }]));
     setTrips(allTrips.map((trip) => ({ ...trip, orders: [...trip.orders, ...(rowsByTrip.get(trip.id) ?? [])] })));
     setImportOpen(false);
     setImportRows([]);
@@ -2209,7 +2234,9 @@ function CostsModule({ costs, allCosts, setCosts, trips, onToast, onNew, onEdit 
   function confirmImport() {
     if (!validRows.length || invalidRows.length) return;
     const firstId = allCosts.length ? Math.max(...allCosts.map((cost) => cost.id)) + 1 : 1;
-    const imported = validRows.map(({ row: _row, error: _error, ...cost }, index) => ({ ...cost, id: firstId + index }));
+    const importedAt = new Date().toISOString();
+    const importBatchId = `costs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const imported = validRows.map(({ row: _row, error: _error, ...cost }, index) => ({ ...cost, id: firstId + index, importBatchId, importedAt, importFileName: importFile }));
     setCosts([...imported, ...allCosts]);
     setImportOpen(false);
     setImportRows([]);
