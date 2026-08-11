@@ -1155,7 +1155,7 @@ function BonusesHistoryModule({ trips, fuelEntries, cycles, reviews, setReviews,
   const reportCycles = reportDriver ? cycles.filter((cycle) => reportVehicles.includes(cycle.vehicle) && cycleMonth(cycle) === month) : [];
   const reportDistance = reportCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
   const reportLiters = reportCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
-  const reportEvolution = reportDriver?.previousConsumption ? (reportDriver.consumption - reportDriver.previousConsumption) / reportDriver.previousConsumption * 100 : null;
+  const reportEvolution = reportDriver?.previousConsumption && reportDriver.consumption ? (reportDriver.consumption - reportDriver.previousConsumption) / reportDriver.previousConsumption * 100 : null;
   const currentHistory = closures.some((closure) => closure.month === latestMonth) ? closures : [...closures, { month: latestMonth, closedAt: "", entries: calculateEntries(latestMonth) }];
   const historyGroups = Array.from(new Set(currentHistory.flatMap((closure) => closure.entries.map((entry) => `${entry.personType}|${entry.name}`)))).map((key) => {
     const [personType, name] = key.split("|") as ["Chofer" | "Ayudante", string];
