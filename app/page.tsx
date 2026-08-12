@@ -62,7 +62,7 @@ const initialUsers: ErpUser[] = [{ id: 1, name: "Administrador", email: "admin@e
 
 const money = new Intl.NumberFormat("es-PY", { style: "currency", currency: "PYG", maximumFractionDigits: 0 });
 const number = new Intl.NumberFormat("es-PY");
-const navItems = [["dashboard", "Resumen general", "grid"], ["trips", "Viajes", "truck"], ["orders", "Pedidos", "clipboard"], ["costs", "Costos", "coin"], ["fuel", "Combustible", "fuel"], ["bonuses", "Bonificaciones", "coin"], ["results", "Resultados", "report"], ["fleet", "Flota", "vehicle"], ["documents", "Documentos", "report"], ["requests", "Chamados", "clipboard"], ["settings", "Configuración", "settings"]];
+const navItems = [["dashboard", "Resumen general", "grid"], ["trips", "Viajes", "truck"], ["orders", "Pedidos", "clipboard"], ["costs", "Costos", "coin"], ["fuel", "Combustible", "fuel"], ["bonuses", "Bonificaciones", "coin"], ["results", "Resultados", "report"], ["fleet", "Flota", "vehicle"], ["requests", "Chamados", "clipboard"], ["settings", "Configuración", "settings"]];
 const invoiceTotal = (trip: Trip) => trip.orders.reduce((sum, order) => sum + order.amount, 0);
 const freightValue = (trip: Trip, rates: FreightRates) => Math.round(trip.orders.reduce((sum, order) => sum + order.amount * rates[order.freightType] / 100, 0));
 
@@ -110,6 +110,7 @@ function Icon({ name }: { name: string }) {
 
 export default function Home() {
   const [active, setActive] = useState("dashboard");
+  const [fleetTab, setFleetTab] = useState<"vehicles" | "documents">("vehicles");
   const [trips, setTrips] = useState(initialTrips);
   const [modal, setModal] = useState(false);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
@@ -549,7 +550,7 @@ export default function Home() {
           {operationalAlerts.length > 8 && <p className="alerts-more">Mostrando 8 de {operationalAlerts.length} alertas. Abra cada módulo para consultar todos.</p>}
         </section>
         <TripTable trips={filteredTrips.filter((trip) => trip.status !== "Finalizado")} rates={freightRates} onAll={() => setActive("trips")} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip}/>
-      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesHistoryModule trips={trips} vehicles={vehicles} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} closures={bonusClosures} setClosures={setBonusClosures} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} onReport={setReportTrip}/> : active === "fleet" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : active === "documents" ? <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} setTrips={setTrips} tripCosts={tripCosts} setTripCosts={setTripCosts} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
+      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesHistoryModule trips={trips} vehicles={vehicles} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} closures={bonusClosures} setClosures={setBonusClosures} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} fuelEntries={filteredFuel} vehicles={vehicles} bonusClosures={bonusClosures} onReport={setReportTrip}/> : active === "fleet" ? <><div className="fleet-section-tabs" role="tablist" aria-label="Secciones de flota"><button type="button" role="tab" aria-selected={fleetTab === "vehicles"} className={fleetTab === "vehicles" ? "active" : ""} onClick={() => setFleetTab("vehicles")}><Icon name="vehicle"/>Vehículos</button><button type="button" role="tab" aria-selected={fleetTab === "documents"} className={fleetTab === "documents" ? "active" : ""} onClick={() => setFleetTab("documents")}><Icon name="report"/>Documentos</button></div>{fleetTab === "vehicles" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/>}</> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} setTrips={setTrips} tripCosts={tripCosts} setTripCosts={setTripCosts} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
     </section>
     {modal && <div className="modal-backdrop" onMouseDown={() => setModal(false)}><div className="modal trip-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setModal(false); setEditingTrip(null); setTripFormError(""); }} aria-label="Cerrar">×</button><p className="eyebrow">Operación</p><h2 id="modal-title">{editingTrip ? `Editar viaje N.º ${editingTrip.id}` : "Nuevo viaje"}</h2><p className="modal-intro">Registre los datos del viaje. Los pedidos y costos son opcionales y pueden agregarse después.</p>
@@ -693,7 +694,7 @@ function printStandaloneReport(selector: string, title: string, fallbackMode: st
         visibility: visible !important;
       }
       @media print {
-        @page { margin: 10mm; }
+        @page { size: A4 landscape; margin: 10mm; }
         .trip-report { padding: 0 !important; }
       }
     </style>
@@ -729,6 +730,11 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
   const allocations = fuelCycles.flatMap((cycle) => cycle.allocations
     .filter((allocation) => allocation.tripId === trip.id)
     .map((allocation) => ({ cycle, allocation })));
+  const allocatedFuel = allocations.reduce((totals, { cycle, allocation }) => {
+    const liters = cycle.distance > 0 ? cycle.liters * allocation.km / cycle.distance : 0;
+    return { km: totals.km + allocation.km, liters: totals.liters + liters };
+  }, { km: 0, liters: 0 });
+  const averageFuelConsumption = allocatedFuel.liters > 0 ? allocatedFuel.km / allocatedFuel.liters : 0;
   const formatDate = (value?: string) => value ? new Intl.DateTimeFormat("es-PY").format(new Date(`${value}T12:00:00`)) : "—";
 
   return <div className="trip-report-backdrop" role="dialog" aria-modal="true" aria-label={`Informe del viaje ${trip.id}`}>
@@ -756,14 +762,14 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
         </tbody></table></div>
       </section>
 
-      <section className="report-section"><div className="report-section-title"><span>04</span><div><small>COMBUSTIBLE</small><h2>Prorrateo por ciclos</h2></div><strong>{fuelValue ? money.format(fuelValue) : "Pendiente"}</strong></div>
-        <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Km asignados</th><th>Participación</th><th>Valor asignado</th></tr></thead><tbody>
-          {allocations.length ? allocations.map(({ cycle, allocation }) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{number.format(cycle.startOdometer)} → {number.format(cycle.endOdometer)}</td><td>{cycle.vehicle}</td><td>{number.format(cycle.distance)} km</td><td>{number.format(allocation.km)} km</td><td>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td><td><strong>{money.format(allocation.value)}</strong></td></tr>) : <tr><td colSpan={6}>Ciclo abierto o sin combustible asignado definitivamente.</td></tr>}
+      <section className="report-section"><div className="report-section-title"><span>04</span><div><small>COMBUSTIBLE</small><h2>Prorrateo por ciclos</h2></div><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin ciclo cerrado"}</strong></div>
+        <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Promedio</th><th>Km asignados</th><th>Participación</th><th>Valor asignado</th></tr></thead><tbody>
+          {allocations.length ? allocations.map(({ cycle, allocation }) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{number.format(cycle.startOdometer)} → {number.format(cycle.endOdometer)}</td><td>{cycle.vehicle}</td><td>{number.format(cycle.distance)} km</td><td><strong>{cycle.liters > 0 ? `${(cycle.distance / cycle.liters).toFixed(2)} km/L` : "—"}</strong></td><td>{number.format(allocation.km)} km</td><td>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td><td><strong>{money.format(allocation.value)}</strong></td></tr>) : <tr><td colSpan={7}>Ciclo abierto o sin combustible asignado definitivamente.</td></tr>}
         </tbody></table></div>
       </section>
 
       <section className="report-section report-result-section"><div className="report-section-title"><span>05</span><div><small>CIERRE</small><h2>Resultado financiero</h2></div></div>
-        <div className="report-result-grid"><div><small>Flete total</small><strong>{money.format(freight)}</strong></div><div><small>Costos operativos</small><strong>{money.format(totalCosts)}</strong></div><div><small>Combustible</small><strong>{money.format(fuelValue)}</strong></div><div className={result >= 0 ? "report-profit" : "report-loss"}><small>Ganancia / Pérdida</small><strong>{money.format(result)}</strong></div><div><small>Margen</small><strong>{margin.toFixed(1)}%</strong></div><div><small>Costo por km</small><strong>{km ? money.format((totalCosts + fuelValue) / km) : "—"}</strong></div></div>
+        <div className="report-result-grid"><div><small>Flete total</small><strong>{money.format(freight)}</strong></div><div><small>Costos operativos</small><strong>{money.format(totalCosts)}</strong></div><div><small>Combustible</small><strong>{money.format(fuelValue)}</strong></div><div><small>Promedio de combustible</small><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin ciclo cerrado"}</strong></div><div className={result >= 0 ? "report-profit" : "report-loss"}><small>Ganancia / Pérdida</small><strong>{money.format(result)}</strong></div><div><small>Margen</small><strong>{margin.toFixed(1)}%</strong></div><div><small>Costo por km</small><strong>{km ? money.format((totalCosts + fuelValue) / km) : "—"}</strong></div></div>
       </section>
       <footer className="report-footer"><span>FreteControl ERP · Informe del viaje N.º {trip.id}</span><span>Valores expresados en guaraníes (PYG)</span></footer>
     </article>
@@ -863,8 +869,18 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
     setImportFile("");
     onToast(`${imported.length} carga(s) de combustible importada(s) correctamente.`);
   }
-  const reportCycles = vehicleFilter ? cycles.filter((cycle) => cycle.vehicle === vehicleFilter) : cycles;
-  const reportOpenCycles = vehicleFilter ? openCycles.filter((cycle) => cycle.vehicle === vehicleFilter) : openCycles;
+  // A closed cycle belongs to the period in which its closing full-tank entry
+  // was registered. `entries` already contains the global date/chapa filter,
+  // while `cycles` contains the complete history needed for correct km/L.
+  const visibleEntryIds = new Set(entries.map((entry) => entry.id));
+  const reportCycles = cycles.filter((cycle) => {
+    const closingEntryId = cycle.entryIds.at(-1);
+    return closingEntryId !== undefined && visibleEntryIds.has(closingEntryId) && (!vehicleFilter || cycle.vehicle === vehicleFilter);
+  });
+  const reportOpenCycles = openCycles.map((cycle) => ({
+    ...cycle,
+    entries: cycle.entries.filter((entry) => visibleEntryIds.has(entry.id)),
+  })).filter((cycle) => cycle.entries.length > 0 && (!vehicleFilter || cycle.vehicle === vehicleFilter));
   const totalLiters = entries.reduce((sum, entry) => sum + entry.liters, 0);
   const totalValue = entries.reduce((sum, entry) => sum + entry.totalValue, 0);
   const consumptionByVehicle = Array.from(new Set(entries.map((entry) => entry.vehicle))).map((vehicle) => {
@@ -903,10 +919,13 @@ function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { e
   const closedCost = cycles.reduce((sum, cycle) => sum + cycle.cost, 0);
   const allocated = cycles.reduce((sum, cycle) => sum + cycle.allocations.reduce((subtotal, item) => subtotal + item.value, 0), 0);
   const average = closedLiters > 0 ? closedDistance / closedLiters : 0;
+  const sortedDates = entries.map((entry) => entry.date).filter(Boolean).sort();
+  const formatReportDate = (date: string) => new Intl.DateTimeFormat("es-PY").format(new Date(`${date}T12:00:00`));
+  const reportPeriod = sortedDates.length ? `${formatReportDate(sortedDates[0])} al ${formatReportDate(sortedDates.at(-1)!)}` : "Sin cargas en el periodo";
   return <div className="trip-report-backdrop fuel-report-backdrop" role="dialog" aria-modal="true" aria-label="Informe de combustible">
     <article className="trip-report fuel-report">
       <div className="report-toolbar"><button className="secondary" onClick={onClose}>Cerrar</button><button className="primary" onClick={() => printStandaloneReport(".fuel-report", "Informe de combustible", "printing-freight-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
-      <header className="report-header"><div><div className="logo"><strong>Frete</strong><span>Control</span></div><p>Informe de combustible, ciclos y prorrateo por viaje</p>{vehicleFilter && <p><strong>Chapa:</strong> {vehicleFilter}</p>}</div><div className="report-number"><small>COMBUSTIBLE</small><strong>{cycles.length} ciclo(s)</strong><span>{entries.length} carga(s) registrada(s)</span></div></header>
+      <header className="report-header"><div><div className="logo"><strong>Frete</strong><span>Control</span></div><p>Informe de combustible, ciclos y prorrateo por viaje</p><p><strong>Periodo:</strong> {reportPeriod}</p>{vehicleFilter && <p><strong>Chapa:</strong> {vehicleFilter}</p>}</div><div className="report-number"><small>COMBUSTIBLE</small><strong>{cycles.length} ciclo(s)</strong><span>{entries.length} carga(s) registrada(s)</span></div></header>
       <section className="report-section"><div className="report-section-title"><span>01</span><div><small>RESUMEN</small><h2>Ciclos cerrados</h2></div></div>
         <div className="report-result-grid"><div><small>Distancia medida</small><strong>{number.format(closedDistance)} km</strong></div><div><small>Litros consumidos</small><strong>{number.format(closedLiters)} L</strong></div><div><small>Promedio general</small><strong>{average ? `${average.toFixed(2)} km/L` : "—"}</strong></div><div><small>Costo de los ciclos</small><strong>{money.format(closedCost)}</strong></div><div><small>Asignado a viajes</small><strong>{money.format(allocated)}</strong></div><div><small>Ciclos abiertos</small><strong>{openCycles.filter((cycle) => cycle.entries.length > 0).length}</strong></div></div>
       </section>
@@ -1203,18 +1222,27 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
   </div>;
 }
 
-function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, onReport }: {
+function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelEntries, vehicles, bonusClosures, onReport }: {
   trips: Trip[];
   vehicleFilter: string;
   rates: FreightRates;
   costs: TripCost[];
   fuelByTrip: Map<number, number>;
+  fuelEntries: FuelEntry[];
+  vehicles: Vehicle[];
+  bonusClosures: BonusClosure[];
   onReport: (trip: Trip) => void;
 }) {
+  type ResultsArea = "executive" | "profitability" | "operations" | "fleet" | "bonuses";
   type ReportView = "trips" | "branch" | "vehicle" | "driver" | "client";
+  const [area, setArea] = useState<ResultsArea>("executive");
   const [view, setView] = useState<ReportView>("trips");
-  const [freightTypeFilter, setFreightTypeFilter] = useState<"" | FreightType>("Dobro");
-  const reportTrips = vehicleFilter ? trips.filter((trip) => trip.vehicle === vehicleFilter) : trips;
+  const [freightTypeFilter, setFreightTypeFilter] = useState<"" | FreightType>("");
+  const [localVehicle, setLocalVehicle] = useState(vehicleFilter);
+  const [localDriver, setLocalDriver] = useState("");
+  const [localBranch, setLocalBranch] = useState("");
+  useEffect(() => setLocalVehicle(vehicleFilter), [vehicleFilter]);
+  const reportTrips = trips.filter((trip) => (!localVehicle || trip.vehicle === localVehicle) && (!localDriver || trip.driver === localDriver) && (!localBranch || trip.branch === localBranch));
   const rows = reportTrips.map((trip) => {
     const matchingOrders = freightTypeFilter
       ? trip.orders.filter((order) => order.freightType === freightTypeFilter)
@@ -1288,25 +1316,68 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, onRepor
     return Array.from(groups.values()).sort((a, b) => b.profit - a.profit);
   })();
   const topPerformer = grouped[0];
+  const finalizedTrips = reportTrips.filter((trip) => trip.status === "Finalizado").length;
+  const openTrips = reportTrips.length - finalizedTrips;
+  const orderCount = rows.reduce((sum, row) => sum + row.matchingOrders.length, 0);
+  const totalKm = rows.reduce((sum, row) => sum + row.km, 0);
+  const transportedValue = rows.reduce((sum, row) => sum + row.invoiced, 0);
+  const periodStart = reportTrips.map((trip) => trip.startDate).sort()[0] ?? "";
+  const periodEnd = [...reportTrips].map((trip) => trip.endDate || trip.startDate).sort().at(-1) ?? "";
+  const periodLabel = periodStart ? `${new Date(`${periodStart}T12:00:00`).toLocaleDateString("es-PY")} — ${new Date(`${periodEnd}T12:00:00`).toLocaleDateString("es-PY")}` : "Sin datos";
+  const operationalGroups = (() => {
+    const map = new Map<string, { name: string; vehicle: string; trips: number; orders: number; km: number; invoiced: number; freight: number; profit: number }>();
+    rows.forEach((row) => {
+      const key = `${row.trip.driver}|${row.trip.vehicle}`;
+      const item = map.get(key) ?? { name: row.trip.driver, vehicle: row.trip.vehicle, trips: 0, orders: 0, km: 0, invoiced: 0, freight: 0, profit: 0 };
+      item.trips += 1; item.orders += row.matchingOrders.length; item.km += row.km; item.invoiced += row.invoiced; item.freight += row.freight; item.profit += row.profit;
+      map.set(key, item);
+    });
+    return Array.from(map.values()).sort((a, b) => b.orders - a.orders);
+  })();
+  const vehicleGroups = (() => {
+    const map = new Map<string, { vehicle: string; trips: number; orders: number; km: number; freight: number; costs: number; fuel: number; profit: number }>();
+    rows.forEach((row) => {
+      const item = map.get(row.trip.vehicle) ?? { vehicle: row.trip.vehicle, trips: 0, orders: 0, km: 0, freight: 0, costs: 0, fuel: 0, profit: 0 };
+      item.trips += 1; item.orders += row.matchingOrders.length; item.km += row.km; item.freight += row.freight; item.costs += row.tripCostsTotal; item.fuel += row.fuel; item.profit += row.profit;
+      map.set(row.trip.vehicle, item);
+    });
+    return Array.from(map.values()).sort((a, b) => b.km - a.km);
+  })();
+  const filteredFuelEntries = fuelEntries.filter((entry) => (!localVehicle || entry.vehicle === localVehicle) && (!periodStart || entry.date >= periodStart) && (!periodEnd || entry.date <= periodEnd));
+  const fuelTotals = filteredFuelEntries.reduce((acc, entry) => ({ liters: acc.liters + entry.liters, value: acc.value + entry.totalValue }), { liters: 0, value: 0 });
+  const monthKey = periodEnd.slice(0, 7);
+  const bonusClosure = [...bonusClosures].filter((closure) => !monthKey || closure.month === monthKey).sort((a, b) => b.month.localeCompare(a.month))[0];
+  const bonusEntries = bonusClosure?.entries ?? [];
+  const bonusTotal = bonusEntries.reduce((sum, entry) => sum + entry.total, 0);
+  const maxVehicleKm = Math.max(1, ...vehicleGroups.map((item) => item.km));
+  const topVehicle = vehicleGroups[0];
+  const topDriver = operationalGroups[0];
+  const fuelVehicleCount = new Set(filteredFuelEntries.map((entry) => entry.vehicle)).size;
+  const activeVehicleCount = new Set(reportTrips.map((trip) => trip.vehicle)).size;
+  const costTotal = totals.costs + totals.fuel;
+  const areaLabels: Record<ResultsArea, string> = { executive: "Resumen ejecutivo", profitability: "Rentabilidad", operations: "Rendimiento operativo", fleet: "Flota y combustible", bonuses: "Bonificaciones" };
 
   return <section className="results-layout">
     <div className="results-heading">
-      <div><p className="eyebrow">Gestión operacional</p><h2>Relatorios gerenciales</h2><p>Rentabilidad consolidada sin duplicar el combustible distribuido por ciclos.</p>{vehicleFilter && <p className="results-vehicle-filter"><strong>Chapa:</strong> {vehicleFilter}</p>}</div>
+      <div><p className="eyebrow">Gestión empresarial</p><h2>Resultados ejecutivos</h2><p>Visión consolidada para la toma de decisiones.</p><span className="results-updated">Periodo analizado: {periodLabel}</span></div>
       <button className="primary print-button" onClick={() => printWithBodyMode("printing-results-report")}><Icon name="report"/>Imprimir / Guardar PDF</button>
     </div>
-    <div className="report-tabs" role="tablist" aria-label="Tipo de informe">
-      {(Object.keys(reportLabels) as ReportView[]).map((key) => <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? "active" : ""} onClick={() => setView(key)}>{reportLabels[key]}</button>)}
+    <div className="report-tabs results-area-tabs" role="tablist" aria-label="Área de resultados">
+      {(Object.keys(areaLabels) as ResultsArea[]).map((key) => <button key={key} type="button" role="tab" aria-selected={area === key} className={area === key ? "active" : ""} onClick={() => setArea(key)}>{areaLabels[key]}</button>)}
     </div>
-    <div className="results-filter">
+    <div className="results-filter executive-filter">
+      <label>Sucursal<select value={localBranch} onChange={(event) => setLocalBranch(event.target.value)}><option value="">Todas</option>{Array.from(new Set(trips.map((trip) => trip.branch))).sort().map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label>Chapa<select value={localVehicle} onChange={(event) => setLocalVehicle(event.target.value)}><option value="">Todas</option>{Array.from(new Set(trips.map((trip) => trip.vehicle))).sort().map((item) => <option key={item}>{item}</option>)}</select></label>
+      <label>Chofer<select value={localDriver} onChange={(event) => setLocalDriver(event.target.value)}><option value="">Todos</option>{Array.from(new Set(trips.map((trip) => trip.driver))).sort().map((item) => <option key={item}>{item}</option>)}</select></label>
       <label htmlFor="results-freight-type">Tipo de flete
         <select id="results-freight-type" value={freightTypeFilter} onChange={(event) => setFreightTypeFilter(event.target.value as "" | FreightType)}>
           <option value="">Todos los tipos</option>
           {freightTypes.map((type) => <option key={type} value={type}>{type}</option>)}
         </select>
       </label>
-      <div><small>Filtro aplicado</small><strong>{vehicleFilter ? `Chapa ${vehicleFilter}` : "Todas las chapas"} · {freightTypeFilter || "Todos los tipos de flete"}</strong><span>{rows.length} viaje(s) · {rows.reduce((sum, row) => sum + row.matchingOrders.length, 0)} pedido(s)</span></div>
+      <div><small>Filtro aplicado</small><strong>{localVehicle || "Todas las chapas"} · {freightTypeFilter || "Todos los fletes"}</strong><span>{rows.length} viaje(s) · {orderCount} entrega(s)</span></div>
     </div>
-    {freightTypeFilter && <div className="table-card report-table">
+    {area === "profitability" && freightTypeFilter && <div className="table-card report-table">
       <div className="card-heading"><div><p className="eyebrow">Pedidos filtrados</p><h2>Todos los pedidos — {freightTypeFilter}</h2></div><strong>{matchingOrderRows.length} pedido(s)</strong></div>
       <div className="table-scroll"><table><thead><tr><th>Viaje</th><th>Factura</th><th>Pedido</th><th>Cliente</th><th>Valor</th><th>Tipo de flete</th><th>Flete calculado</th></tr></thead><tbody>
         {matchingOrderRows.length === 0 ? <tr><td className="no-results" colSpan={7}>No hay pedidos del tipo seleccionado.</td></tr> : matchingOrderRows.map(({ tripId, order, freight }, index) => <tr key={`${tripId}-${order.order}-${index}`}>
@@ -1314,14 +1385,16 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, onRepor
         </tr>)}
       </tbody></table></div>
     </div>}
-    <div className="result-kpis">
+    <div className={`result-kpis ${area === "executive" ? "executive-kpis" : ""}`}>
+      {area === "executive" && <><article><small>Viajes</small><strong>{rows.length}</strong><span>{finalizedTrips} finalizados · {openTrips} abiertos</span></article><article><small>Entregas</small><strong>{orderCount}</strong><span>Pedidos del periodo</span></article><article><small>Kilómetros recorridos</small><strong>{number.format(Math.round(totalKm))} km</strong><span>Distancia consolidada</span></article><article><small>Mercadería transportada</small><strong>{money.format(transportedValue)}</strong><span>Valor total registrado</span></article></>}
       <article><small>Fletes calculados</small><strong>{money.format(totals.freight)}</strong><span>Según pedidos y tipo de flete</span></article>
       <article><small>Costos operativos</small><strong>{money.format(totals.costs)}</strong><span>Sin combustible duplicado</span></article>
       <article><small>Combustible</small><strong>{money.format(totals.fuel)}</strong><span>Rateado por ciclos cerrados</span></article>
       <article className={totals.profit >= 0 ? "profit-card" : "loss-card"}><small>Resultado neto</small><strong>{money.format(totals.profit)}</strong><span>Margen {totalMargin.toFixed(1)}%</span></article>
     </div>
-    {view !== "trips" && topPerformer && <div className="management-highlight"><span className="metric-icon positive">↗</span><div><small>Mejor resultado — {reportLabels[view]}</small><strong>{topPerformer.name}</strong><p>{money.format(topPerformer.profit)} de resultado · {topPerformer.trips.size} viaje(s)</p></div></div>}
-    {view === "trips" ? <div className="table-card report-table"><div className="card-heading"><div><p className="eyebrow">Detalle verificable</p><h2>Rentabilidad de los viajes</h2></div><strong>{rows.length} viajes</strong></div><div className="table-scroll"><table className="trip-results-table"><thead><tr><th>Viaje</th><th>Sucursal</th><th>Chapa / Chofer</th><th>Flete</th><th>Costos</th><th>Combustible</th><th>Resultado</th><th>Margen</th><th>Km</th><th>Costo/km</th><th>Informe</th></tr></thead><tbody>
+    {area === "profitability" && <div className="report-tabs results-subtabs" role="tablist" aria-label="Agrupación de rentabilidad">{(Object.keys(reportLabels) as ReportView[]).map((key) => <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? "active" : ""} onClick={() => setView(key)}>{reportLabels[key]}</button>)}</div>}
+    {area === "profitability" && view !== "trips" && topPerformer && <div className="management-highlight"><span className="metric-icon positive">↗</span><div><small>Mejor resultado — {reportLabels[view]}</small><strong>{topPerformer.name}</strong><p>{money.format(topPerformer.profit)} de resultado · {topPerformer.trips.size} viaje(s)</p></div></div>}
+    {area === "profitability" && (view === "trips" ? <div className="table-card report-table"><div className="card-heading"><div><p className="eyebrow">Detalle verificable</p><h2>Rentabilidad de los viajes</h2></div><strong>{rows.length} viajes</strong></div><div className="table-scroll"><table className="trip-results-table"><thead><tr><th>Viaje</th><th>Sucursal</th><th>Chapa / Chofer</th><th>Flete</th><th>Costos</th><th>Combustible</th><th>Resultado</th><th>Margen</th><th>Km</th><th>Costo/km</th><th>Informe</th></tr></thead><tbody>
       {rows.length === 0 ? <tr><td className="no-results" colSpan={11}>No hay resultados con los filtros seleccionados.</td></tr> : rows.map(({ trip, matchingOrders, freight, tripCostsTotal, fuel, profit, margin, km }) => <tr key={trip.id}>
         <td><strong>N.º {trip.id}</strong><small>{matchingOrders.length} pedido(s) · {[...new Set(matchingOrders.map((order) => order.freightType))].join(", ")}</small></td>
         <td>{trip.branch}</td>
@@ -1342,8 +1415,27 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, onRepor
         const costPerKm = item.km > 0 ? (item.costs + item.fuel) / item.km : 0;
         return <tr key={item.name}><td><strong>{item.name}</strong></td><td>{item.trips.size}</td><td>{item.orders}</td><td>{money.format(item.invoiced)}</td><td>{money.format(item.freight)}</td><td>{money.format(item.costs)}</td><td>{money.format(item.fuel)}</td><td><strong className={item.profit >= 0 ? "positive-value" : "negative-value"}>{money.format(item.profit)}</strong></td><td>{margin.toFixed(1)}%</td><td>{item.km ? `${number.format(Math.round(item.km))} km` : "—"}</td><td>{costPerKm ? money.format(costPerKm) : "—"}</td></tr>;
       })}
-    </tbody></table></div></div>}
-    <p className="results-note">Los ciclos abiertos permanecen pendientes y no se descuentan definitivamente hasta la próxima carga de tanque completo.</p>
+    </tbody></table></div></div>)}
+    {area === "executive" && <>
+      <div className="executive-status"><span className="done">● {finalizedTrips} finalizados</span><span className="pending">● {reportTrips.filter((trip) => trip.status === "Pendiente").length} pendientes</span><span className="transit">● {reportTrips.filter((trip) => trip.status === "En tránsito").length} en tránsito</span><span>● {reportTrips.filter((trip) => !["Finalizado", "Pendiente", "En tránsito"].includes(trip.status)).length} en preparación</span></div>
+      <div className="executive-grid">
+        <section className="table-card executive-vehicles"><div className="card-heading"><div><p className="eyebrow">Actividad operacional</p><h2>Desempeño por vehículo</h2></div><button className="text-action" onClick={() => setArea("operations")}>Ver detalle →</button></div>{vehicleGroups.slice(0, 6).map((item) => <div className="vehicle-performance" key={item.vehicle}><strong>{item.vehicle}</strong><span>{item.trips} viajes · {item.orders} entregas</span><div><i style={{ width: `${Math.max(4, item.km / maxVehicleKm * 100)}%` }}/></div><em>{number.format(Math.round(item.km))} km</em></div>)}{!vehicleGroups.length && <p className="no-results">No hay actividad para los filtros seleccionados.</p>}</section>
+        <section className="table-card management-insights"><div className="card-heading"><div><p className="eyebrow">Lectura automática</p><h2>Insights de gestión</h2></div></div>
+          <article className="insight-info"><b>Alta concentración operativa</b><p>{topVehicle ? `${topVehicle.vehicle} concentra ${(topVehicle.km / Math.max(totalKm, 1) * 100).toFixed(1)}% de los kilómetros del periodo.` : "Sin kilometraje suficiente para analizar."}</p></article>
+          <article className="insight-positive"><b>Mayor productividad</b><p>{topDriver ? `${topDriver.name} realizó ${topDriver.orders} entregas en ${topDriver.trips} viajes.` : "Sin entregas registradas."}</p></article>
+          <article className="insight-warning"><b>Seguimiento requerido</b><p>{openTrips} viajes siguen abiertos y requieren actualización de estado.</p></article>
+          <article className="insight-neutral"><b>Control de combustible</b><p>{fuelVehicleCount} de {activeVehicleCount} vehículos con viajes registran cargas en el periodo.</p></article>
+        </section>
+      </div>
+      <section className="table-card executive-driver-table"><div className="card-heading"><div><p className="eyebrow">Productividad</p><h2>Rendimiento de choferes</h2></div><strong>{operationalGroups.length} equipos</strong></div><div className="table-scroll"><table><thead><tr><th>Chofer</th><th>Chapa</th><th>Viajes</th><th>Entregas</th><th>Km</th><th>Mercadería transportada</th><th>Resultado</th></tr></thead><tbody>{operationalGroups.map((item) => <tr key={`${item.name}-${item.vehicle}`}><td><strong>{item.name}</strong></td><td>{item.vehicle}</td><td>{item.trips}</td><td>{item.orders}</td><td>{number.format(Math.round(item.km))} km</td><td>{money.format(item.invoiced)}</td><td><strong className={item.profit >= 0 ? "positive-value" : "negative-value"}>{money.format(item.profit)}</strong></td></tr>)}</tbody></table></div></section>
+    </>}
+    {area === "operations" && <section className="table-card executive-driver-table"><div className="card-heading"><div><p className="eyebrow">Rendimiento operativo</p><h2>Viajes, entregas y kilometraje por equipo</h2></div><strong>{operationalGroups.length} equipos</strong></div><div className="table-scroll"><table><thead><tr><th>Chofer</th><th>Chapa</th><th>Viajes</th><th>Entregas</th><th>Km recorridos</th><th>Mercadería</th><th>Entregas/viaje</th><th>Resultado</th></tr></thead><tbody>{operationalGroups.map((item) => <tr key={`${item.name}-${item.vehicle}`}><td><strong>{item.name}</strong></td><td>{item.vehicle}</td><td>{item.trips}</td><td>{item.orders}</td><td>{number.format(Math.round(item.km))} km</td><td>{money.format(item.invoiced)}</td><td>{item.trips ? (item.orders / item.trips).toFixed(1) : "—"}</td><td><strong className={item.profit >= 0 ? "positive-value" : "negative-value"}>{money.format(item.profit)}</strong></td></tr>)}</tbody></table></div></section>}
+    {area === "fleet" && <div className="fleet-results-grid">
+      <section className="table-card"><div className="card-heading"><div><p className="eyebrow">Combustible</p><h2>Control del periodo</h2></div></div><div className="fleet-result-kpis"><span><small>Cargas</small><strong>{filteredFuelEntries.length}</strong></span><span><small>Litros</small><strong>{number.format(fuelTotals.liters)} L</strong></span><span><small>Valor cargado</small><strong>{money.format(fuelTotals.value)}</strong></span></div><p className="results-note">El costo definitivo por viaje se reconoce al cerrar cada ciclo de tanque completo.</p></section>
+      <section className="table-card"><div className="card-heading"><div><p className="eyebrow">Metas</p><h2>Consumo por vehículo</h2></div></div>{vehicleGroups.map((item) => { const target = vehicles.find((vehicle) => vehicle.plate === item.vehicle)?.fuelConsumptionTarget; return <div className="fuel-target-row" key={item.vehicle}><span><strong>{item.vehicle}</strong><small>{item.trips} viajes · {number.format(Math.round(item.km))} km</small></span><em>{target ? `Meta ${target.toFixed(2)} km/L` : "Meta pendiente"}</em></div>; })}</section>
+    </div>}
+    {area === "bonuses" && <section className="table-card"><div className="card-heading"><div><p className="eyebrow">Desempeño mensual</p><h2>Bonificaciones {bonusClosure ? `— ${new Date(`${bonusClosure.month}-01T12:00:00`).toLocaleDateString("es-PY", { month: "long", year: "numeric" })}` : ""}</h2></div><strong>{money.format(bonusTotal)}</strong></div><div className="table-scroll"><table><thead><tr><th>Beneficiario</th><th>Categoría</th><th>Viajes</th><th>Descarga</th><th>Sin devolución</th><th>Consumo promedio</th><th>Total</th></tr></thead><tbody>{bonusEntries.map((entry) => <tr key={`${entry.personType}-${entry.name}`}><td><strong>{entry.name}</strong><small>{entry.personType}</small></td><td>{entry.category}</td><td>{entry.trips}</td><td>{entry.unloadingMet ? "Cumplido" : "No cumplido"}</td><td>{entry.damageMet ? "Cumplido" : "No cumplido"}</td><td>{entry.personType === "Chofer" ? `${entry.consumption.toFixed(2)} km/L` : "No aplica"}</td><td><strong>{money.format(entry.total)}</strong></td></tr>)}{!bonusEntries.length && <tr><td colSpan={7} className="no-results">No hay un cierre de bonificaciones para el periodo seleccionado.</td></tr>}</tbody></table></div></section>}
+    {area === "profitability" && <p className="results-note">Los ciclos abiertos permanecen pendientes y no se descuentan definitivamente hasta la próxima carga de tanque completo.</p>}
   </section>;
 }
 
@@ -2283,12 +2375,31 @@ function OrdersModule({ trips, allTrips, setTrips, rates, setRates, onEdit, onTo
 
 function CostsModule({ costs, allCosts, setCosts, trips, onToast, onNew, onEdit }: { costs: TripCost[]; allCosts: TripCost[]; setCosts: (costs: TripCost[]) => void; trips: Trip[]; onToast: (message: string) => void; onNew: () => void; onEdit: (cost: TripCost) => void }) {
   const [importOpen, setImportOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [importFile, setImportFile] = useState("");
   const [importRows, setImportRows] = useState<ImportedCost[]>([]);
   const [importBusy, setImportBusy] = useState(false);
   const total = costs.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
   const validRows = importRows.filter((row) => !row.error);
   const invalidRows = importRows.filter((row) => row.error);
+  const sortedCosts = [...costs].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+  const reportTripIds = new Set(costs.map((cost) => cost.tripId));
+  const reportTrips = trips.filter((trip) => reportTripIds.has(trip.id));
+  const categorySummary = costTypes.map((type) => {
+    const rows = costs.filter((cost) => cost.type === type);
+    return { type, records: rows.length, total: rows.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0) };
+  });
+  const averagePerTrip = reportTripIds.size ? total / reportTripIds.size : 0;
+  const reportDates = sortedCosts.map((cost) => cost.date).filter(Boolean);
+  const formatReportDate = (date: string) => new Intl.DateTimeFormat("es-PY").format(new Date(`${date}T12:00:00`));
+  const reportPeriod = reportDates.length ? `${formatReportDate(reportDates.at(-1)!)} al ${formatReportDate(reportDates[0])}` : "Sin periodo";
+  const filterLabel = (values: string[], allLabel: string) => {
+    const unique = Array.from(new Set(values.filter(Boolean)));
+    return unique.length === 1 ? unique[0] : allLabel;
+  };
+  const reportVehicles = filterLabel(reportTrips.map((trip) => trip.vehicle), "Todas las chapas");
+  const reportDrivers = filterLabel(reportTrips.map((trip) => trip.driver), "Todos los choferes");
+  const reportBranches = filterLabel(reportTrips.map((trip) => trip.branch), "Todas las sucursales");
   const tripLabel = (id: number) => {
     const trip = trips.find((item) => item.id === id);
     return trip ? `N.º ${id} — ${trip.vehicle}` : `N.º ${id}`;
@@ -2383,13 +2494,21 @@ function CostsModule({ costs, allCosts, setCosts, trips, onToast, onNew, onEdit 
     <div className="cost-summary">
       <div><p className="eyebrow">Control financiero</p><h2>Costos de viajes</h2><p>Combustible no se registra aquí para evitar duplicidad.</p></div>
       <div className="cost-total"><small>Total registrado</small><strong>{money.format(total)}</strong></div>
-      <div className="cost-import-actions"><button className="secondary" onClick={() => void downloadTemplate()}>↓ Modelo Excel</button><button className="secondary" onClick={() => setImportOpen(true)}>▤ Importar Excel</button><button className="primary" onClick={onNew}><Icon name="plus"/>Nuevo costo</button></div>
+      <div className="cost-import-actions"><button className="secondary" onClick={() => setReportOpen(true)}><Icon name="report"/>Generar informe</button><button className="secondary" onClick={() => void downloadTemplate()}>↓ Modelo Excel</button><button className="secondary" onClick={() => setImportOpen(true)}>▤ Importar Excel</button><button className="primary" onClick={onNew}><Icon name="plus"/>Nuevo costo</button></div>
     </div>
     <div className="category-grid">{costTypes.map((type) => {
       const categoryTotal = costs.filter((cost) => cost.type === type).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
       return <article key={type}><small>{type}</small><strong>{money.format(categoryTotal)}</strong></article>;
     })}</div>
-    <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Detalle</p><h2>Gastos registrados</h2></div><strong>{costs.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Tipo</th><th>Descripción</th><th>Cantidad</th><th>Valor unitario</th><th>Total</th><th>Acciones</th></tr></thead><tbody>{costs.map((cost) => <tr key={cost.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${cost.date}T12:00:00`))}</td><td><strong>{tripLabel(cost.tripId)}</strong></td><td><span className="cost-badge">{cost.type}</span></td><td>{cost.description || "—"}</td><td>{number.format(cost.quantity)}</td><td>{money.format(cost.unitValue)}</td><td><strong>{money.format(cost.quantity * cost.unitValue)}</strong></td><td><button className="edit-action" onClick={() => onEdit(cost)}>Editar</button></td></tr>)}</tbody></table></div></div>
+    <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Detalle</p><h2>Gastos registrados</h2></div><strong>{costs.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Tipo</th><th>Descripción</th><th>Cantidad</th><th>Valor unitario</th><th>Total</th><th>Acciones</th></tr></thead><tbody>{sortedCosts.map((cost) => <tr key={cost.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${cost.date}T12:00:00`))}</td><td><strong>{tripLabel(cost.tripId)}</strong></td><td><span className="cost-badge">{cost.type}</span></td><td>{cost.description || "—"}</td><td>{number.format(cost.quantity)}</td><td>{money.format(cost.unitValue)}</td><td><strong>{money.format(cost.quantity * cost.unitValue)}</strong></td><td><button className="edit-action" onClick={() => onEdit(cost)}>Editar</button></td></tr>)}</tbody></table></div></div>
+    {reportOpen && <div className="trip-report-backdrop cost-report-backdrop" onMouseDown={() => setReportOpen(false)}><div className="trip-report cost-report" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="report-toolbar"><button className="secondary" onClick={() => setReportOpen(false)}>Cerrar</button><button className="primary" onClick={() => printStandaloneReport(".cost-report", "Informe de costos operativos", "printing-freight-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
+      <header className="cost-report-header"><p>GESTIÓN OPERATIVA</p><h1>INFORME DE COSTOS OPERATIVOS</h1><span>Periodo: {reportPeriod}</span><small>Filtros aplicados: {reportVehicles} · {reportDrivers} · {reportBranches}</small></header>
+      <section className="cost-report-kpis"><article><small>Total de costos</small><strong>{money.format(total)}</strong></article><article><small>Viajes con costos</small><strong>{reportTripIds.size}</strong></article><article><small>Costo promedio por viaje</small><strong>{money.format(averagePerTrip)}</strong></article><article><small>Registros</small><strong>{costs.length}</strong></article></section>
+      <section className="cost-report-block"><h2>RESUMEN POR CATEGORÍA</h2><table><thead><tr><th>Categoría</th><th>Registros</th><th>Total</th></tr></thead><tbody>{categorySummary.map((item) => <tr key={item.type}><td>{item.type}</td><td>{item.records}</td><td>{money.format(item.total)}</td></tr>)}</tbody></table></section>
+      <section className="cost-report-block cost-detail-block"><h2>DETALLE DE COSTOS</h2><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Chapa / Chofer</th><th>Tipo</th><th>Descripción</th><th>Cantidad</th><th>Valor unitario</th><th>Total</th></tr></thead><tbody>{sortedCosts.length ? sortedCosts.map((cost) => { const trip = trips.find((item) => item.id === cost.tripId); return <tr key={cost.id}><td>{formatReportDate(cost.date)}</td><td>N.º {cost.tripId}</td><td><strong>{trip?.vehicle || "—"}</strong><small>{trip?.driver || "Sin chofer"}</small></td><td>{cost.type}</td><td>{cost.description || "—"}</td><td>{number.format(cost.quantity)}</td><td>{money.format(cost.unitValue)}</td><td><strong>{money.format(cost.quantity * cost.unitValue)}</strong></td></tr>; }) : <tr><td colSpan={8} className="no-results">No hay costos para los filtros aplicados.</td></tr>}</tbody><tfoot><tr><td colSpan={7}>TOTAL GENERAL</td><td>{money.format(total)}</td></tr></tfoot></table></section>
+      <footer className="cost-report-signatures"><div><span>Preparado por</span></div><div><span>Autorizado por</span></div></footer>
+    </div></div>}
     {importOpen && <div className="modal-backdrop" onMouseDown={() => setImportOpen(false)}><div className="modal orders-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-costs-title" onMouseDown={(event) => event.stopPropagation()}>
       <button className="close" onClick={() => setImportOpen(false)} aria-label="Cerrar">×</button><p className="eyebrow">Carga masiva</p><h2 id="import-costs-title">Importar costos</h2><p className="modal-intro">Columnas requeridas: Viaje, Fecha, Tipo, Descripción, Cantidad y Valor unitario.</p>
       <label className="excel-drop"><input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" onChange={(event) => void readCostsFile(event.target.files?.[0])}/><span>▤</span><strong>{importBusy ? "Leyendo archivo…" : importFile || "Seleccionar archivo Excel"}</strong><small>Excel, XLS o CSV · primera hoja del archivo</small></label>
