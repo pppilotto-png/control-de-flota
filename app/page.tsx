@@ -22,7 +22,9 @@ type Vehicle = { id: number; plate: string; active: boolean; fleetStatus?: Fleet
 type Driver = { id: number; name: string; active: boolean };
 type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; odometerAvailable?: boolean; fullTank: boolean } & ImportMetadata;
 type ImportedFuel = Omit<FuelEntry, "id"> & { row: number; error?: string };
-type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; distance: number; cost: number; liters: number; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
+type FuelDistanceMethod = "Odómetro" | "GPS / distancia alternativa";
+type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; startDate?: string; endDate?: string; distanceMethod?: FuelDistanceMethod; distance: number; cost: number; liters: number; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
+type FuelOpenCycle = { vehicle: string; startOdometer: number; startDate?: string; distanceMethod?: FuelDistanceMethod; entries: FuelEntry[] };
 type MaintenanceType = "Preventivo" | "Correctivo" | "Neumáticos" | "Documentación" | "Otros";
 type Maintenance = { id: number; vehicle: string; date: string; type: MaintenanceType; description: string; km: number; value: number; nextDate?: string; nextKm?: number };
 type ServiceRequestStatus = "Nuevo" | "En análisis" | "Aprobado" | "En mantenimiento" | "Concluido";
@@ -71,7 +73,7 @@ const isEstimatedTrip = (trip: Trip) => Boolean(trip.distanceSource && trip.dist
 
 function calculateFuelCycles(entries: FuelEntry[], trips: Trip[]) {
   const cycles: FuelCycle[] = [];
-  const openCycles: { vehicle: string; startOdometer: number; entries: FuelEntry[] }[] = [];
+  const openCycles: FuelOpenCycle[] = [];
   Array.from(new Set(entries.map((entry) => entry.vehicle))).forEach((vehicle) => {
     const sorted = entries.filter((entry) => entry.vehicle === vehicle && entry.odometerAvailable !== false).sort((a, b) => a.odometer - b.odometer);
     const fullIndexes = sorted.map((entry, index) => entry.fullTank ? index : -1).filter((index) => index >= 0);
@@ -87,11 +89,33 @@ function calculateFuelCycles(entries: FuelEntry[], trips: Trip[]) {
         const km = Math.max(0, Math.min(trip.kmFinal, end.odometer) - Math.max(trip.kmInitial, start.odometer));
         return { tripId: trip.id, km, value: Math.round(cost * km / distance) };
       }).filter((allocation) => allocation.km > 0);
-      cycles.push({ id: `${vehicle}-${start.odometer}-${end.odometer}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, distance, cost, liters, entryIds: cycleEntries.map((entry) => entry.id), allocations });
+      cycles.push({ id: `${vehicle}-${start.odometer}-${end.odometer}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "Odómetro", distance, cost, liters, entryIds: cycleEntries.map((entry) => entry.id), allocations });
     }
     if (fullIndexes.length) {
       const lastFullIndex = fullIndexes.at(-1)!;
-      openCycles.push({ vehicle, startOdometer: sorted[lastFullIndex].odometer, entries: sorted.slice(lastFullIndex + 1) });
+      openCycles.push({ vehicle, startOdometer: sorted[lastFullIndex].odometer, startDate: sorted[lastFullIndex].date, distanceMethod: "Odómetro", entries: sorted.slice(lastFullIndex + 1) });
+    }
+
+    const alternative = entries.filter((entry) => entry.vehicle === vehicle && entry.odometerAvailable === false).sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    const alternativeFullIndexes = alternative.map((entry, index) => entry.fullTank ? index : -1).filter((index) => index >= 0);
+    for (let index = 0; index < alternativeFullIndexes.length - 1; index += 1) {
+      const start = alternative[alternativeFullIndexes[index]];
+      const end = alternative[alternativeFullIndexes[index + 1]];
+      const cycleEntries = alternative.slice(alternativeFullIndexes[index] + 1, alternativeFullIndexes[index + 1] + 1);
+      const cycleTrips = trips.filter((trip) => trip.vehicle === vehicle && isEstimatedTrip(trip) && trip.kmValidated && trip.startDate >= start.date && (trip.endDate ?? trip.startDate) <= end.date);
+      const distance = cycleTrips.reduce((sum, trip) => sum + tripDistance(trip), 0);
+      const cost = cycleEntries.reduce((sum, entry) => sum + entry.totalValue, 0);
+      const liters = cycleEntries.reduce((sum, entry) => sum + entry.liters, 0);
+      const allocations = distance > 0 ? cycleTrips.map((trip) => {
+        const km = tripDistance(trip);
+        return { tripId: trip.id, km, value: Math.round(cost * km / distance) };
+      }).filter((allocation) => allocation.km > 0) : [];
+      cycles.push({ id: `${vehicle}-alternative-${start.id}-${end.id}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "GPS / distancia alternativa", distance, cost, liters, entryIds: cycleEntries.map((entry) => entry.id), allocations });
+    }
+    if (alternativeFullIndexes.length) {
+      const lastFullIndex = alternativeFullIndexes.at(-1)!;
+      const start = alternative[lastFullIndex];
+      openCycles.push({ vehicle, startOdometer: start.odometer, startDate: start.date, distanceMethod: "GPS / distancia alternativa", entries: alternative.slice(lastFullIndex + 1) });
     }
   });
   const allocationByTrip = new Map<number, number>();
@@ -639,7 +663,7 @@ export default function Home() {
         <label>Fecha<input name="date" type="date" defaultValue={editingFuel?.date ?? "2026-07-24"} required autoFocus/></label>
         <label>Chapa<select name="vehicle" required value={fuelVehicleDraft} onChange={(event) => setFuelVehicleDraft(event.target.value)}><option value="">Seleccione la chapa</option>{activeVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.plate}</option>)}</select></label>
         <label>Estación de servicio<input name="station" defaultValue={editingFuel?.station} placeholder="Nombre o ubicación"/></label>
-        {fuelOdometerBroken ? <div className="odometer-alert wide-field"><strong>⚠ Odómetro averiado</strong><span>Esta carga se guardará sin lectura de odómetro y no cerrará un ciclo de consumo. Última lectura válida: {number.format(fuelVehicleProfile?.lastValidOdometer ?? fuelVehicleProfile?.currentKm ?? 0)} km.</span></div> : <label>Hodómetro (km)<input name="odometer" type="number" min="0" step="1" defaultValue={editingFuel?.odometer} placeholder="0" required/></label>}
+        {fuelOdometerBroken ? <div className="odometer-alert wide-field"><strong>⚠ Ciclo por GPS / distancia alternativa</strong><span>Esta carga se guardará sin lectura de odómetro. Dos cargas marcadas como tanque completo cerrarán el ciclo usando solamente las distancias validadas de los viajes del periodo.</span></div> : <label>Hodómetro (km)<input name="odometer" type="number" min="0" step="1" defaultValue={editingFuel?.odometer} placeholder="0" required/></label>}
         <label>Litros<input name="liters" type="number" min="0.01" step="0.01" defaultValue={editingFuel?.liters} placeholder="0,00" required/></label>
         <label>Precio por litro (₲/L)<input name="pricePerLiter" type="number" min="1" step="0.01" defaultValue={editingFuel?.pricePerLiter ?? (editingFuel && editingFuel.liters > 0 ? editingFuel.totalValue / editingFuel.liters : undefined)} placeholder="0" required/><small>El valor total se calcula automáticamente: litros × precio por litro.</small></label>
         <label className="check-field"><input name="fullTank" type="checkbox" defaultChecked={editingFuel?.fullTank}/> Tanque completo</label>
@@ -801,7 +825,7 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
   </div>;
 }
 
-function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, trips, cycles, openCycles, onToast, onNew, onEdit }: { entries: FuelEntry[]; allEntries: FuelEntry[]; setEntries: (entries: FuelEntry[]) => void; vehicles: Vehicle[]; vehicleFilter: string; trips: Trip[]; cycles: FuelCycle[]; openCycles: { vehicle: string; startOdometer: number; entries: FuelEntry[] }[]; onToast: (message: string) => void; onNew: () => void; onEdit: (entry: FuelEntry) => void }) {
+function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, trips, cycles, openCycles, onToast, onNew, onEdit }: { entries: FuelEntry[]; allEntries: FuelEntry[]; setEntries: (entries: FuelEntry[]) => void; vehicles: Vehicle[]; vehicleFilter: string; trips: Trip[]; cycles: FuelCycle[]; openCycles: FuelOpenCycle[]; onToast: (message: string) => void; onNew: () => void; onEdit: (entry: FuelEntry) => void }) {
   const [reportOpen, setReportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState("");
@@ -909,10 +933,11 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
   const totalLiters = entries.reduce((sum, entry) => sum + entry.liters, 0);
   const totalValue = entries.reduce((sum, entry) => sum + entry.totalValue, 0);
   const consumptionByVehicle = Array.from(new Set(entries.map((entry) => entry.vehicle))).map((vehicle) => {
-    const complete = entries.filter((entry) => entry.vehicle === vehicle && entry.fullTank && entry.odometerAvailable !== false).sort((a, b) => a.odometer - b.odometer);
-    const distance = complete.length > 1 ? complete.at(-1)!.odometer - complete[0].odometer : 0;
-    const consumed = complete.length > 1 ? complete.slice(1).reduce((sum, entry) => sum + entry.liters, 0) : 0;
-    return { vehicle, average: consumed > 0 ? distance / consumed : 0, distance };
+    const vehicleCycles = reportCycles.filter((cycle) => cycle.vehicle === vehicle && cycle.distance > 0);
+    const distance = vehicleCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
+    const consumed = vehicleCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+    const alternative = vehicleCycles.some((cycle) => cycle.distanceMethod === "GPS / distancia alternativa");
+    return { vehicle, average: consumed > 0 ? distance / consumed : 0, distance, alternative };
   });
   const closedDistance = reportCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
   const closedLiters = reportCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
@@ -923,7 +948,7 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
       <div className="fuel-kpis"><span><small>Valor total</small><strong>{money.format(totalValue)}</strong></span><span><small>Litros</small><strong>{number.format(totalLiters)} L</strong></span><span><small>Promedio general</small><strong>{averageConsumption ? `${averageConsumption.toFixed(2)} km/L` : "—"}</strong></span></div>
       <div className="fuel-actions"><button className="secondary" onClick={() => void downloadTemplate()}>↓ Modelo Excel</button><button className="secondary" onClick={() => setImportOpen(true)}>▤ Importar Excel</button><button className="secondary" onClick={() => setReportOpen(true)}><Icon name="report"/>Generar informe</button><button className="primary" onClick={onNew}><Icon name="plus"/>Nueva carga</button></div>
     </div>
-    <div className="fuel-vehicle-grid">{consumptionByVehicle.map((item) => <article key={item.vehicle}><span className="fuel-pump"><Icon name="fuel"/></span><div><small>{item.vehicle}</small><strong>{item.average ? `${item.average.toFixed(2)} km/L` : "Aguardando otra carga completa"}</strong><em>{item.distance ? `${number.format(item.distance)} km medidos` : "Sin intervalo calculable"}</em></div></article>)}</div>
+    <div className="fuel-vehicle-grid">{consumptionByVehicle.map((item) => <article key={item.vehicle}><span className="fuel-pump"><Icon name="fuel"/></span><div><small>{item.vehicle}</small><strong>{item.average ? `${item.average.toFixed(2)} km/L` : "Aguardando otra carga completa"}</strong><em>{item.distance ? `${number.format(item.distance)} km · ${item.alternative ? "GPS / distancia validada" : "odómetro"}` : "Sin intervalo calculable"}</em></div></article>)}</div>
     <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Historial</p><h2>Cargas registradas</h2></div><strong>{entries.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Chapa</th><th>Estación</th><th>Hodómetro</th><th>Litros</th><th>Precio/L</th><th>Valor total</th><th>Tanque</th><th>Acciones</th></tr></thead><tbody>{entries.length === 0 ? <tr><td className="no-results" colSpan={10}>No hay cargas con los filtros seleccionados.</td></tr> : sortedEntries.map((entry) => <tr key={entry.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${entry.date}T12:00:00`))}</td><td>{entry.tripId ? <strong>N.º {entry.tripId}</strong> : <span className="unlinked-badge">Por chapa</span>}<small>{entry.tripId ? trips.find((trip) => trip.id === entry.tripId)?.driver : "Sin viaje específico"}</small></td><td><strong>{entry.vehicle}</strong></td><td>{entry.station || "—"}</td><td>{entry.odometerAvailable === false ? <span className="estimated-km">No disponible</span> : `${number.format(entry.odometer)} km`}</td><td>{number.format(entry.liters)} L</td><td>{money.format(entry.pricePerLiter ?? (entry.liters > 0 ? entry.totalValue / entry.liters : 0))}</td><td><strong>{money.format(entry.totalValue)}</strong></td><td><span className={entry.fullTank ? "branch-status active" : "branch-status"}>{entry.fullTank ? "Completo" : "Parcial"}</span></td><td><button className="edit-action" onClick={() => onEdit(entry)}>Editar</button></td></tr>)}</tbody></table></div></div>
     {importOpen && <div className="modal-backdrop" onMouseDown={() => setImportOpen(false)}><div className="modal orders-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-fuel-title" onMouseDown={(event) => event.stopPropagation()}>
       <button className="close" onClick={() => setImportOpen(false)} aria-label="Cerrar">×</button><p className="eyebrow">Carga masiva</p><h2 id="import-fuel-title">Importar combustible</h2><p className="modal-intro">Columnas requeridas: Fecha, Chapa, Estación, Odómetro, Litros, Precio por litro y Tanque completo.</p>
@@ -938,7 +963,7 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
   </section>;
 }
 
-function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { entries: FuelEntry[]; vehicleFilter: string; cycles: FuelCycle[]; openCycles: { vehicle: string; startOdometer: number; entries: FuelEntry[] }[]; onClose: () => void }) {
+function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { entries: FuelEntry[]; vehicleFilter: string; cycles: FuelCycle[]; openCycles: FuelOpenCycle[]; onClose: () => void }) {
   const closedDistance = cycles.reduce((sum, cycle) => sum + cycle.distance, 0);
   const closedLiters = cycles.reduce((sum, cycle) => sum + cycle.liters, 0);
   const closedCost = cycles.reduce((sum, cycle) => sum + cycle.cost, 0);
@@ -947,6 +972,7 @@ function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { e
   const sortedDates = entries.map((entry) => entry.date).filter(Boolean).sort();
   const formatReportDate = (date: string) => new Intl.DateTimeFormat("es-PY").format(new Date(`${date}T12:00:00`));
   const reportPeriod = sortedDates.length ? `${formatReportDate(sortedDates[0])} al ${formatReportDate(sortedDates.at(-1)!)}` : "Sin cargas en el periodo";
+  const cycleLabel = (cycle: FuelCycle) => cycle.distanceMethod === "GPS / distancia alternativa" && cycle.startDate && cycle.endDate ? `${formatReportDate(cycle.startDate)} → ${formatReportDate(cycle.endDate)}` : `${number.format(cycle.startOdometer)} → ${number.format(cycle.endOdometer)}`;
   return <div className="trip-report-backdrop fuel-report-backdrop" role="dialog" aria-modal="true" aria-label="Informe de combustible">
     <article className="trip-report fuel-report">
       <div className="report-toolbar"><button className="secondary" onClick={onClose}>Cerrar</button><button className="primary" onClick={() => printStandaloneReport(".fuel-report", "Informe de combustible", "printing-freight-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
@@ -957,8 +983,8 @@ function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { e
       <section className="report-section"><div className="report-section-title"><span>02</span><div><small>DETALLE</small><h2>Ciclos y prorrateo por viaje</h2></div></div>
         <div className="cycle-explanation">Costo del ciclo × (km del viaje dentro del ciclo ÷ km total del ciclo). Los kilómetros sin viaje vinculado quedan sin asignar.</div>
         <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Costo</th><th>Viaje / Km</th><th>Valor asignado</th></tr></thead><tbody>
-          {cycles.map((cycle) => cycle.allocations.length ? cycle.allocations.map((allocation, index) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{index === 0 ? `${number.format(cycle.startOdometer)} → ${number.format(cycle.endOdometer)}` : ""}</td><td>{index === 0 ? <strong>{cycle.vehicle}</strong> : ""}</td><td>{index === 0 ? `${number.format(cycle.distance)} km` : ""}</td><td>{index === 0 ? money.format(cycle.cost) : ""}</td><td><strong>Viaje N.º {allocation.tripId}</strong><br/>{number.format(allocation.km)} km</td><td><strong>{money.format(allocation.value)}</strong><br/>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td></tr>) : <tr key={cycle.id}><td>{number.format(cycle.startOdometer)} → {number.format(cycle.endOdometer)}</td><td><strong>{cycle.vehicle}</strong></td><td>{number.format(cycle.distance)} km</td><td>{money.format(cycle.cost)}</td><td colSpan={2}>Sin viajes con km dentro del ciclo</td></tr>)}
-          {openCycles.filter((cycle) => cycle.entries.length > 0).map((cycle) => <tr key={`open-${cycle.vehicle}`} className="open-cycle"><td>Desde {number.format(cycle.startOdometer)}</td><td><strong>{cycle.vehicle}</strong></td><td>En curso</td><td>{money.format(cycle.entries.reduce((sum, entry) => sum + entry.totalValue, 0))}</td><td colSpan={2}>Pendiente de la próxima carga completa</td></tr>)}
+          {cycles.map((cycle) => cycle.allocations.length ? cycle.allocations.map((allocation, index) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{index === 0 ? <>{cycleLabel(cycle)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></> : ""}</td><td>{index === 0 ? <strong>{cycle.vehicle}</strong> : ""}</td><td>{index === 0 ? `${number.format(cycle.distance)} km` : ""}</td><td>{index === 0 ? money.format(cycle.cost) : ""}</td><td><strong>Viaje N.º {allocation.tripId}</strong><br/>{number.format(allocation.km)} km</td><td><strong>{money.format(allocation.value)}</strong><br/>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td></tr>) : <tr key={cycle.id}><td>{cycleLabel(cycle)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></td><td><strong>{cycle.vehicle}</strong></td><td>{number.format(cycle.distance)} km</td><td>{money.format(cycle.cost)}</td><td colSpan={2}>{cycle.distanceMethod === "GPS / distancia alternativa" ? "Sin viajes con distancia alternativa validada en el periodo" : "Sin viajes con km dentro del ciclo"}</td></tr>)}
+          {openCycles.filter((cycle) => cycle.entries.length > 0).map((cycle) => <tr key={`open-${cycle.vehicle}-${cycle.distanceMethod}`} className="open-cycle"><td>Desde {cycle.distanceMethod === "GPS / distancia alternativa" && cycle.startDate ? formatReportDate(cycle.startDate) : number.format(cycle.startOdometer)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></td><td><strong>{cycle.vehicle}</strong></td><td>En curso</td><td>{money.format(cycle.entries.reduce((sum, entry) => sum + entry.totalValue, 0))}</td><td colSpan={2}>Pendiente de la próxima carga completa</td></tr>)}
           {!cycles.length && !openCycles.some((cycle) => cycle.entries.length > 0) && <tr><td colSpan={6}>No hay ciclos de combustible para informar.</td></tr>}
         </tbody></table></div>
       </section>
