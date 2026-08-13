@@ -918,6 +918,24 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
     setImportFile("");
     onToast(`${imported.length} carga(s) de combustible importada(s) correctamente.`);
   }
+
+  async function deleteFuelEntry(entry: FuelEntry) {
+    const formattedDate = new Intl.DateTimeFormat("es-PY").format(new Date(`${entry.date}T12:00:00`));
+    if (!window.confirm(
+      `¿Enviar la carga de ${number.format(entry.liters)} L de ${entry.vehicle}, fecha ${formattedDate}, a la papelera?\n\nLos ciclos y promedios serán recalculados. Podrá restaurarla desde Configuración → Papelera.`
+    )) return;
+    const response = await fetch("/api/trash/fuel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: entry.id }),
+    });
+    if (!response.ok) {
+      onToast("No se pudo eliminar la carga de combustible.");
+      return;
+    }
+    onToast("Carga enviada a la papelera. Recalculando ciclos y promedios…");
+    window.setTimeout(() => window.location.reload(), 600);
+  }
   // A closed cycle belongs to the period in which its closing full-tank entry
   // was registered. `entries` already contains the global date/chapa filter,
   // while `cycles` contains the complete history needed for correct km/L.
@@ -949,7 +967,7 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
       <div className="fuel-actions"><button className="secondary" onClick={() => void downloadTemplate()}>↓ Modelo Excel</button><button className="secondary" onClick={() => setImportOpen(true)}>▤ Importar Excel</button><button className="secondary" onClick={() => setReportOpen(true)}><Icon name="report"/>Generar informe</button><button className="primary" onClick={onNew}><Icon name="plus"/>Nueva carga</button></div>
     </div>
     <div className="fuel-vehicle-grid">{consumptionByVehicle.map((item) => <article key={item.vehicle}><span className="fuel-pump"><Icon name="fuel"/></span><div><small>{item.vehicle}</small><strong>{item.average ? `${item.average.toFixed(2)} km/L` : "Aguardando otra carga completa"}</strong><em>{item.distance ? `${number.format(item.distance)} km · ${item.alternative ? "GPS / distancia validada" : "odómetro"}` : "Sin intervalo calculable"}</em></div></article>)}</div>
-    <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Historial</p><h2>Cargas registradas</h2></div><strong>{entries.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Chapa</th><th>Estación</th><th>Hodómetro</th><th>Litros</th><th>Precio/L</th><th>Valor total</th><th>Tanque</th><th>Acciones</th></tr></thead><tbody>{entries.length === 0 ? <tr><td className="no-results" colSpan={10}>No hay cargas con los filtros seleccionados.</td></tr> : sortedEntries.map((entry) => <tr key={entry.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${entry.date}T12:00:00`))}</td><td>{entry.tripId ? <strong>N.º {entry.tripId}</strong> : <span className="unlinked-badge">Por chapa</span>}<small>{entry.tripId ? trips.find((trip) => trip.id === entry.tripId)?.driver : "Sin viaje específico"}</small></td><td><strong>{entry.vehicle}</strong></td><td>{entry.station || "—"}</td><td>{entry.odometerAvailable === false ? <span className="estimated-km">No disponible</span> : `${number.format(entry.odometer)} km`}</td><td>{number.format(entry.liters)} L</td><td>{money.format(entry.pricePerLiter ?? (entry.liters > 0 ? entry.totalValue / entry.liters : 0))}</td><td><strong>{money.format(entry.totalValue)}</strong></td><td><span className={entry.fullTank ? "branch-status active" : "branch-status"}>{entry.fullTank ? "Completo" : "Parcial"}</span></td><td><button className="edit-action" onClick={() => onEdit(entry)}>Editar</button></td></tr>)}</tbody></table></div></div>
+    <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Historial</p><h2>Cargas registradas</h2></div><strong>{entries.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Chapa</th><th>Estación</th><th>Hodómetro</th><th>Litros</th><th>Precio/L</th><th>Valor total</th><th>Tanque</th><th>Acciones</th></tr></thead><tbody>{entries.length === 0 ? <tr><td className="no-results" colSpan={10}>No hay cargas con los filtros seleccionados.</td></tr> : sortedEntries.map((entry) => <tr key={entry.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${entry.date}T12:00:00`))}</td><td>{entry.tripId ? <strong>N.º {entry.tripId}</strong> : <span className="unlinked-badge">Por chapa</span>}<small>{entry.tripId ? trips.find((trip) => trip.id === entry.tripId)?.driver : "Sin viaje específico"}</small></td><td><strong>{entry.vehicle}</strong></td><td>{entry.station || "—"}</td><td>{entry.odometerAvailable === false ? <span className="estimated-km">No disponible</span> : `${number.format(entry.odometer)} km`}</td><td>{number.format(entry.liters)} L</td><td>{money.format(entry.pricePerLiter ?? (entry.liters > 0 ? entry.totalValue / entry.liters : 0))}</td><td><strong>{money.format(entry.totalValue)}</strong></td><td><span className={entry.fullTank ? "branch-status active" : "branch-status"}>{entry.fullTank ? "Completo" : "Parcial"}</span></td><td><div className="row-actions"><button className="edit-action" onClick={() => onEdit(entry)}>Editar</button><button className="delete-action" onClick={() => void deleteFuelEntry(entry)}>Eliminar</button></div></td></tr>)}</tbody></table></div></div>
     {importOpen && <div className="modal-backdrop" onMouseDown={() => setImportOpen(false)}><div className="modal orders-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-fuel-title" onMouseDown={(event) => event.stopPropagation()}>
       <button className="close" onClick={() => setImportOpen(false)} aria-label="Cerrar">×</button><p className="eyebrow">Carga masiva</p><h2 id="import-fuel-title">Importar combustible</h2><p className="modal-intro">Columnas requeridas: Fecha, Chapa, Estación, Odómetro, Litros, Precio por litro y Tanque completo.</p>
       <label className="excel-drop"><input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" onChange={(event) => void readFuelFile(event.target.files?.[0])}/><span>▤</span><strong>{importBusy ? "Leyendo archivo…" : importFile || "Seleccionar archivo Excel"}</strong><small>Excel, XLS o CSV · primera hoja del archivo</small></label>
