@@ -20,7 +20,7 @@ type Branch = { id: number; name: string; active: boolean };
 type FleetStatus = "Activo" | "Taller" | "Inactivo";
 type Vehicle = { id: number; plate: string; active: boolean; fleetStatus?: FleetStatus; brand?: string; model?: string; year?: number; type?: string; branch?: string; currentKm?: number; fuelConsumptionTarget?: number; insuranceExpiry?: string; inspectionExpiry?: string; odometerStatus?: "Funcionando" | "Averiado"; odometerIssueDate?: string; lastValidOdometer?: number; odometerNotes?: string };
 type Driver = { id: number; name: string; active: boolean };
-type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; fullTank: boolean } & ImportMetadata;
+type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; odometerAvailable?: boolean; fullTank: boolean } & ImportMetadata;
 type ImportedFuel = Omit<FuelEntry, "id"> & { row: number; error?: string };
 type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; distance: number; cost: number; liters: number; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
 type MaintenanceType = "Preventivo" | "Correctivo" | "Neumáticos" | "Documentación" | "Otros";
@@ -73,7 +73,7 @@ function calculateFuelCycles(entries: FuelEntry[], trips: Trip[]) {
   const cycles: FuelCycle[] = [];
   const openCycles: { vehicle: string; startOdometer: number; entries: FuelEntry[] }[] = [];
   Array.from(new Set(entries.map((entry) => entry.vehicle))).forEach((vehicle) => {
-    const sorted = entries.filter((entry) => entry.vehicle === vehicle).sort((a, b) => a.odometer - b.odometer);
+    const sorted = entries.filter((entry) => entry.vehicle === vehicle && entry.odometerAvailable !== false).sort((a, b) => a.odometer - b.odometer);
     const fullIndexes = sorted.map((entry, index) => entry.fullTank ? index : -1).filter((index) => index >= 0);
     for (let index = 0; index < fullIndexes.length - 1; index += 1) {
       const start = sorted[fullIndexes[index]];
@@ -142,6 +142,7 @@ export default function Home() {
   const [fuelModal, setFuelModal] = useState(false);
   const [editingCost, setEditingCost] = useState<TripCost | null>(null);
   const [editingFuel, setEditingFuel] = useState<FuelEntry | null>(null);
+  const [fuelVehicleDraft, setFuelVehicleDraft] = useState("");
   const [reportTrip, setReportTrip] = useState<Trip | null>(null);
   const [tripTab, setTripTab] = useState<"data" | "orders" | "costs" | "result">("data");
   const [kmInitialDraft, setKmInitialDraft] = useState(0);
@@ -150,6 +151,10 @@ export default function Home() {
   const [driverDraft, setDriverDraft] = useState("");
   const [helperDraft, setHelperDraft] = useState("");
   const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (fuelModal) setFuelVehicleDraft(editingFuel?.vehicle ?? "");
+  }, [fuelModal, editingFuel]);
   const [tripFormError, setTripFormError] = useState("");
   const [dataReady, setDataReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"loading" | "saved" | "saving" | "error">("loading");
@@ -364,16 +369,20 @@ export default function Home() {
     const selectedTrip = selectedTripId ? trips.find((trip) => trip.id === selectedTripId) : undefined;
     const liters = Number(form.get("liters") || 0);
     const pricePerLiter = Number(form.get("pricePerLiter") || 0);
+    const vehicle = selectedTrip?.vehicle ?? String(form.get("vehicle"));
+    const vehicleProfile = vehicles.find((item) => item.plate === vehicle);
+    const odometerAvailable = vehicleProfile?.odometerStatus !== "Averiado";
     const saved: FuelEntry = {
       id: editingFuel?.id ?? (fuelEntries.length ? Math.max(...fuelEntries.map((entry) => entry.id)) + 1 : 1),
       tripId: selectedTripId,
       date: String(form.get("date")),
-      vehicle: selectedTrip?.vehicle ?? String(form.get("vehicle")),
+      vehicle,
       station: String(form.get("station") || ""),
       liters,
       pricePerLiter,
       totalValue: Math.round(liters * pricePerLiter),
-      odometer: Number(form.get("odometer") || 0),
+      odometer: odometerAvailable ? Number(form.get("odometer") || 0) : vehicleProfile?.lastValidOdometer ?? vehicleProfile?.currentKm ?? 0,
+      odometerAvailable,
       fullTank: form.get("fullTank") === "on",
       importBatchId: editingFuel?.importBatchId,
       importedAt: editingFuel?.importedAt,
@@ -481,6 +490,8 @@ export default function Home() {
   const selectedOdometerBroken = selectedVehicleProfile?.odometerStatus === "Averiado";
   const finishingVehicleProfile = vehicles.find((vehicle) => vehicle.plate === finishingTrip?.vehicle);
   const finishingOdometerBroken = finishingVehicleProfile?.odometerStatus === "Averiado";
+  const fuelVehicleProfile = vehicles.find((vehicle) => vehicle.plate === fuelVehicleDraft);
+  const fuelOdometerBroken = fuelVehicleProfile?.odometerStatus === "Averiado";
   const modalResult = modalFreight - modalCosts - modalFuel;
   const modalMargin = modalFreight > 0 ? modalResult / modalFreight * 100 : 0;
   const today = new Date().toISOString().slice(0, 10);
@@ -624,11 +635,11 @@ export default function Home() {
     {fuelModal && <div className="modal-backdrop" onMouseDown={() => { setFuelModal(false); setEditingFuel(null); }}><div className="modal cost-modal" role="dialog" aria-modal="true" aria-labelledby="fuel-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setFuelModal(false); setEditingFuel(null); }} aria-label="Cerrar">×</button><p className="eyebrow">Control de combustible</p><h2 id="fuel-title">{editingFuel ? "Editar carga" : "Nueva carga"}</h2><p className="modal-intro">El vínculo con el viaje sirve como referencia. El costo se calcula por ciclos completos y kilómetros recorridos, sin duplicidad.</p>
       <form onSubmit={saveFuel}>
-        <label>Viaje (opcional)<select name="tripId" defaultValue={editingFuel?.tripId ?? ""}><option value="">Sin viaje específico</option>{trips.map((trip) => <option key={trip.id} value={trip.id}>N.º {trip.id} — {trip.vehicle} — {trip.driver}</option>)}</select></label>
+        <label>Viaje (opcional)<select name="tripId" defaultValue={editingFuel?.tripId ?? ""} onChange={(event) => { const trip = trips.find((item) => item.id === Number(event.target.value)); if (trip) setFuelVehicleDraft(trip.vehicle); }}><option value="">Sin viaje específico</option>{trips.map((trip) => <option key={trip.id} value={trip.id}>N.º {trip.id} — {trip.vehicle} — {trip.driver}</option>)}</select></label>
         <label>Fecha<input name="date" type="date" defaultValue={editingFuel?.date ?? "2026-07-24"} required autoFocus/></label>
-        <label>Chapa<select name="vehicle" required defaultValue={editingFuel?.vehicle ?? ""}><option value="">Seleccione la chapa</option>{activeVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.plate}</option>)}</select></label>
+        <label>Chapa<select name="vehicle" required value={fuelVehicleDraft} onChange={(event) => setFuelVehicleDraft(event.target.value)}><option value="">Seleccione la chapa</option>{activeVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.plate}</option>)}</select></label>
         <label>Estación de servicio<input name="station" defaultValue={editingFuel?.station} placeholder="Nombre o ubicación"/></label>
-        <label>Hodómetro (km)<input name="odometer" type="number" min="0" step="1" defaultValue={editingFuel?.odometer} placeholder="0" required/></label>
+        {fuelOdometerBroken ? <div className="odometer-alert wide-field"><strong>⚠ Odómetro averiado</strong><span>Esta carga se guardará sin lectura de odómetro y no cerrará un ciclo de consumo. Última lectura válida: {number.format(fuelVehicleProfile?.lastValidOdometer ?? fuelVehicleProfile?.currentKm ?? 0)} km.</span></div> : <label>Hodómetro (km)<input name="odometer" type="number" min="0" step="1" defaultValue={editingFuel?.odometer} placeholder="0" required/></label>}
         <label>Litros<input name="liters" type="number" min="0.01" step="0.01" defaultValue={editingFuel?.liters} placeholder="0,00" required/></label>
         <label>Precio por litro (₲/L)<input name="pricePerLiter" type="number" min="1" step="0.01" defaultValue={editingFuel?.pricePerLiter ?? (editingFuel && editingFuel.liters > 0 ? editingFuel.totalValue / editingFuel.liters : undefined)} placeholder="0" required/><small>El valor total se calcula automáticamente: litros × precio por litro.</small></label>
         <label className="check-field"><input name="fullTank" type="checkbox" defaultChecked={editingFuel?.fullTank}/> Tanque completo</label>
@@ -898,7 +909,7 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
   const totalLiters = entries.reduce((sum, entry) => sum + entry.liters, 0);
   const totalValue = entries.reduce((sum, entry) => sum + entry.totalValue, 0);
   const consumptionByVehicle = Array.from(new Set(entries.map((entry) => entry.vehicle))).map((vehicle) => {
-    const complete = entries.filter((entry) => entry.vehicle === vehicle && entry.fullTank).sort((a, b) => a.odometer - b.odometer);
+    const complete = entries.filter((entry) => entry.vehicle === vehicle && entry.fullTank && entry.odometerAvailable !== false).sort((a, b) => a.odometer - b.odometer);
     const distance = complete.length > 1 ? complete.at(-1)!.odometer - complete[0].odometer : 0;
     const consumed = complete.length > 1 ? complete.slice(1).reduce((sum, entry) => sum + entry.liters, 0) : 0;
     return { vehicle, average: consumed > 0 ? distance / consumed : 0, distance };
@@ -913,7 +924,7 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
       <div className="fuel-actions"><button className="secondary" onClick={() => void downloadTemplate()}>↓ Modelo Excel</button><button className="secondary" onClick={() => setImportOpen(true)}>▤ Importar Excel</button><button className="secondary" onClick={() => setReportOpen(true)}><Icon name="report"/>Generar informe</button><button className="primary" onClick={onNew}><Icon name="plus"/>Nueva carga</button></div>
     </div>
     <div className="fuel-vehicle-grid">{consumptionByVehicle.map((item) => <article key={item.vehicle}><span className="fuel-pump"><Icon name="fuel"/></span><div><small>{item.vehicle}</small><strong>{item.average ? `${item.average.toFixed(2)} km/L` : "Aguardando otra carga completa"}</strong><em>{item.distance ? `${number.format(item.distance)} km medidos` : "Sin intervalo calculable"}</em></div></article>)}</div>
-    <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Historial</p><h2>Cargas registradas</h2></div><strong>{entries.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Chapa</th><th>Estación</th><th>Hodómetro</th><th>Litros</th><th>Precio/L</th><th>Valor total</th><th>Tanque</th><th>Acciones</th></tr></thead><tbody>{entries.length === 0 ? <tr><td className="no-results" colSpan={10}>No hay cargas con los filtros seleccionados.</td></tr> : sortedEntries.map((entry) => <tr key={entry.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${entry.date}T12:00:00`))}</td><td>{entry.tripId ? <strong>N.º {entry.tripId}</strong> : <span className="unlinked-badge">Por chapa</span>}<small>{entry.tripId ? trips.find((trip) => trip.id === entry.tripId)?.driver : "Sin viaje específico"}</small></td><td><strong>{entry.vehicle}</strong></td><td>{entry.station || "—"}</td><td>{number.format(entry.odometer)} km</td><td>{number.format(entry.liters)} L</td><td>{money.format(entry.pricePerLiter ?? (entry.liters > 0 ? entry.totalValue / entry.liters : 0))}</td><td><strong>{money.format(entry.totalValue)}</strong></td><td><span className={entry.fullTank ? "branch-status active" : "branch-status"}>{entry.fullTank ? "Completo" : "Parcial"}</span></td><td><button className="edit-action" onClick={() => onEdit(entry)}>Editar</button></td></tr>)}</tbody></table></div></div>
+    <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Historial</p><h2>Cargas registradas</h2></div><strong>{entries.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Viaje</th><th>Chapa</th><th>Estación</th><th>Hodómetro</th><th>Litros</th><th>Precio/L</th><th>Valor total</th><th>Tanque</th><th>Acciones</th></tr></thead><tbody>{entries.length === 0 ? <tr><td className="no-results" colSpan={10}>No hay cargas con los filtros seleccionados.</td></tr> : sortedEntries.map((entry) => <tr key={entry.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${entry.date}T12:00:00`))}</td><td>{entry.tripId ? <strong>N.º {entry.tripId}</strong> : <span className="unlinked-badge">Por chapa</span>}<small>{entry.tripId ? trips.find((trip) => trip.id === entry.tripId)?.driver : "Sin viaje específico"}</small></td><td><strong>{entry.vehicle}</strong></td><td>{entry.station || "—"}</td><td>{entry.odometerAvailable === false ? <span className="estimated-km">No disponible</span> : `${number.format(entry.odometer)} km`}</td><td>{number.format(entry.liters)} L</td><td>{money.format(entry.pricePerLiter ?? (entry.liters > 0 ? entry.totalValue / entry.liters : 0))}</td><td><strong>{money.format(entry.totalValue)}</strong></td><td><span className={entry.fullTank ? "branch-status active" : "branch-status"}>{entry.fullTank ? "Completo" : "Parcial"}</span></td><td><button className="edit-action" onClick={() => onEdit(entry)}>Editar</button></td></tr>)}</tbody></table></div></div>
     {importOpen && <div className="modal-backdrop" onMouseDown={() => setImportOpen(false)}><div className="modal orders-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-fuel-title" onMouseDown={(event) => event.stopPropagation()}>
       <button className="close" onClick={() => setImportOpen(false)} aria-label="Cerrar">×</button><p className="eyebrow">Carga masiva</p><h2 id="import-fuel-title">Importar combustible</h2><p className="modal-intro">Columnas requeridas: Fecha, Chapa, Estación, Odómetro, Litros, Precio por litro y Tanque completo.</p>
       <label className="excel-drop"><input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" onChange={(event) => void readFuelFile(event.target.files?.[0])}/><span>▤</span><strong>{importBusy ? "Leyendo archivo…" : importFile || "Seleccionar archivo Excel"}</strong><small>Excel, XLS o CSV · primera hoja del archivo</small></label>
