@@ -185,7 +185,6 @@ export default function Home() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [chartPeriod, setChartPeriod] = useState<"daily" | "monthly">("daily");
   const [filters, setFilters] = useState<Filters>({ dateFrom: "", dateTo: "", branch: "", vehicle: "", driver: "", status: "" });
 
   useEffect(() => {
@@ -295,41 +294,43 @@ export default function Home() {
   const fuelCost = useMemo(() => filteredTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0), [filteredTrips, fuelCycles]);
   const result = revenue - costs - fuelCost;
   const financialSeries = useMemo(() => {
-    const periodKey = (date: string) => chartPeriod === "daily" ? date : date.slice(0, 7);
-    const sourceDates = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date)].filter(Boolean).sort();
-    let keys: string[];
-    if (chartPeriod === "daily" && sourceDates.length) {
-      const lastDataDate = sourceDates[sourceDates.length - 1];
-      const startDate = filters.dateFrom || `${lastDataDate.slice(0, 7)}-01`;
-      const endDate = filters.dateTo || lastDataDate;
-      const cursor = new Date(`${startDate}T12:00:00Z`);
-      const end = new Date(`${endDate}T12:00:00Z`);
-      keys = [];
-      while (cursor <= end) {
-        keys.push(cursor.toISOString().slice(0, 10));
-        cursor.setUTCDate(cursor.getUTCDate() + 1);
-      }
-    } else {
-      keys = Array.from(new Set(sourceDates.map(periodKey))).slice(-6);
+    const sourceDates = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date), ...filteredFuel.map((entry) => entry.date)].filter(Boolean).sort();
+    if (!sourceDates.length) return [];
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const lastSourceMonth = sourceDates.at(-1)!.slice(0, 7);
+    const endMonth = filters.dateTo?.slice(0, 7) || (lastSourceMonth > currentMonth ? lastSourceMonth : currentMonth);
+    const endCursor = new Date(`${endMonth}-01T12:00:00Z`);
+    const earliestAllowed = new Date(endCursor);
+    earliestAllowed.setUTCMonth(earliestAllowed.getUTCMonth() - 11);
+    const requestedStart = filters.dateFrom?.slice(0, 7);
+    const requestedStartCursor = requestedStart ? new Date(`${requestedStart}-01T12:00:00Z`) : null;
+    const startCursor = requestedStartCursor
+      ? new Date(requestedStartCursor > earliestAllowed ? requestedStartCursor : earliestAllowed)
+      : new Date(endCursor);
+    if (!requestedStart) startCursor.setUTCMonth(startCursor.getUTCMonth() - 5);
+    const keys: string[] = [];
+    const cursor = new Date(startCursor);
+    while (cursor <= endCursor) {
+      keys.push(cursor.toISOString().slice(0, 7));
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
     }
     return keys.map((key) => {
-      const matches = (date: string) => periodKey(date) === key;
+      const matches = (date: string) => date.slice(0, 7) === key;
       const bucketTrips = filteredTrips.filter((trip) => matches(trip.startDate));
       const fletes = bucketTrips.reduce((sum, trip) => sum + freightValue(trip, freightRates), 0);
       const directCosts = filteredCosts.filter((cost) => matches(cost.date)).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
       const fuel = bucketTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0);
       const totalCosts = directCosts + fuel;
-      const label = chartPeriod === "daily"
-        ? new Intl.DateTimeFormat("es-PY", { day: "2-digit", month: "2-digit" }).format(new Date(`${key}T12:00:00`))
-        : new Intl.DateTimeFormat("es-PY", { month: "short", year: "2-digit" }).format(new Date(`${key}-01T12:00:00`)).replace(".", "");
+      const label = new Intl.DateTimeFormat("es-PY", { month: "short", year: "2-digit" }).format(new Date(`${key}-01T12:00:00`)).replace(".", "");
       return { key, label, fletes, costs: totalCosts, result: fletes - totalCosts };
     });
-  }, [chartPeriod, filteredTrips, filteredCosts, freightRates, fuelCycles]);
+  }, [filteredTrips, filteredCosts, filteredFuel, freightRates, fuelCycles, filters.dateFrom, filters.dateTo]);
   const financialChartMax = Math.max(1, ...financialSeries.flatMap((item) => [item.fletes, item.costs, Math.max(0, item.result)]));
   const chartScaleMax = financialChartMax >= 1000000 ? Math.ceil(financialChartMax / 1000000) * 1000000 : Math.ceil(financialChartMax / 100000) * 100000;
   const chartX = (index: number) => financialSeries.length <= 1 ? 355 : 10 + index * 690 / (financialSeries.length - 1);
   const chartY = (value: number) => 138 - Math.max(0, value) / chartScaleMax * 118;
   const chartPoints = (key: "fletes" | "costs" | "result") => financialSeries.map((item, index) => `${chartX(index)},${chartY(item[key])}`).join(" ");
+  const resultAreaPoints = financialSeries.length ? `${chartX(0)},138 ${chartPoints("result")} ${chartX(financialSeries.length - 1)},138` : "";
   const axisLabel = (value: number) => value === 0 ? "0" : value >= 1000000 ? `${(value / 1000000).toFixed(value % 1000000 ? 1 : 0).replace(".", ",")} M` : `${Math.round(value / 1000)} mil`;
   const isReadOnly = session.role === "Consulta";
   const visibleNavItems = navItems.filter(([key]) => session.role === "Administrador" ? true :
@@ -580,7 +581,7 @@ export default function Home() {
           <article><span className="metric-icon positive">↗</span><div><small>Resultado</small><strong className="green">{money.format(result)}</strong><em>Después de costos y combustible</em></div></article>
           <article><span className="metric-icon">▱</span><div><small>Viajes activos</small><strong>{filteredTrips.filter((trip) => trip.status !== "Finalizado").length}</strong><em>Control por kilometraje</em></div></article>
         </section>
-        <section className="financial-card"><div className="summary"><div className="card-heading"><h2>Resumen financiero</h2><select className="chart-period-select" value={chartPeriod} onChange={(event) => setChartPeriod(event.target.value as "daily" | "monthly")} aria-label="Periodo del gráfico"><option value="daily">Diario</option><option value="monthly">Mensual</option></select></div><p><span><i className="dot revenue"/>Fletes</span><strong>{money.format(revenue)}</strong></p><p><span><i className="dot costs"/>Costos</span><strong>{money.format(costs + fuelCost)}</strong></p><p><span><i className="dot profit"/>Resultado</span><strong className={result >= 0 ? "green" : "negative-value"}>{money.format(result)}</strong></p></div><div className="chart" aria-label="Gráfico del resumen financiero"><div className="chart-grid"><span>{axisLabel(chartScaleMax)}</span><span>{axisLabel(chartScaleMax * 2 / 3)}</span><span>{axisLabel(chartScaleMax / 3)}</span><span>0</span></div>{financialSeries.length ? <div className="chart-series-scroll"><div className="chart-series" style={{ minWidth: `${Math.max(720, financialSeries.length * 48)}px` }}><svg viewBox="0 0 720 150" role="img" aria-label={chartPeriod === "daily" ? "Fletes, costos y resultado por día" : "Fletes, costos y resultado por mes"}><polyline className="line revenue-line" points={chartPoints("fletes")}/><polyline className="line costs-line" points={chartPoints("costs")}/><polyline className="line profit-line" points={chartPoints("result")}/>{financialSeries.map((item, index) => <g key={item.key}><circle className="chart-point revenue-point" cx={chartX(index)} cy={chartY(item.fletes)} r="3"/><circle className="chart-point costs-point" cx={chartX(index)} cy={chartY(item.costs)} r="3"/><circle className="chart-point profit-point" cx={chartX(index)} cy={chartY(item.result)} r="3"/></g>)}</svg><div className="days">{financialSeries.map((item) => <span key={item.key}>{item.label}</span>)}</div></div></div> : <div className="chart-empty">No hay datos para el periodo seleccionado.</div>}</div></section>
+        <section className="financial-card monthly-financial-card"><div className="summary"><div className="financial-title"><div><p className="eyebrow">Evolución financiera</p><h2>Resumen mensual</h2></div><span className="monthly-badge">Mensual</span></div><div className="financial-metrics"><p><span><i className="dot revenue"/>Fletes</span><strong>{money.format(revenue)}</strong></p><p><span><i className="dot costs"/>Costos</span><strong>{money.format(costs + fuelCost)}</strong></p><p><span><i className="dot profit"/>Resultado</span><strong className={result >= 0 ? "green" : "negative-value"}>{money.format(result)}</strong></p></div></div><div className="chart" aria-label="Gráfico del resumen financiero mensual"><div className="chart-heading"><div><strong>Desempeño de los últimos meses</strong><small>Actualizado automáticamente con viajes, costos y combustible</small></div><span>{financialSeries.length} meses</span></div><div className="chart-grid"><span>{axisLabel(chartScaleMax)}</span><span>{axisLabel(chartScaleMax * 2 / 3)}</span><span>{axisLabel(chartScaleMax / 3)}</span><span>0</span></div>{financialSeries.length ? <div className="chart-series-scroll"><div className="chart-series" style={{ minWidth: `${Math.max(720, financialSeries.length * 88)}px` }}><svg viewBox="0 0 720 150" role="img" aria-label="Fletes, costos y resultado por mes"><defs><linearGradient id="result-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#9ac640" stopOpacity="0.24"/><stop offset="100%" stopColor="#9ac640" stopOpacity="0.02"/></linearGradient></defs><polygon className="result-area" points={resultAreaPoints}/><polyline className="line revenue-line" points={chartPoints("fletes")}/><polyline className="line costs-line" points={chartPoints("costs")}/><polyline className="line profit-line" points={chartPoints("result")}/>{financialSeries.map((item, index) => <g key={item.key}><circle className="chart-point revenue-point" cx={chartX(index)} cy={chartY(item.fletes)} r="4"/><circle className="chart-point costs-point" cx={chartX(index)} cy={chartY(item.costs)} r="4"/><circle className="chart-point profit-point" cx={chartX(index)} cy={chartY(item.result)} r="4"/><title>{`${item.label}: Fletes ${money.format(item.fletes)}, Costos ${money.format(item.costs)}, Resultado ${money.format(item.result)}`}</title></g>)}</svg><div className="days">{financialSeries.map((item) => <span key={item.key}>{item.label}</span>)}</div></div></div> : <div className="chart-empty">No hay datos financieros para mostrar.</div>}</div></section>
         <section className="alerts-center" aria-label="Central de alertas operacionales">
           <div className="card-heading"><div><p className="eyebrow">Atención requerida</p><h2>Central de alertas operacionales</h2></div><strong>{operationalAlerts.length} alerta(s)</strong></div>
           <div className="alert-summary">
