@@ -78,6 +78,7 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
 .trip-tab-panel{min-height:275px}
 .trip-tab-panel[hidden]{display:none}
 .data-panel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;background:#fbfcfb;border:1px solid var(--line);border-radius:12px;padding:22px}
+.data-panel .wide-field,.data-panel .trip-form-section-title{grid-column:1/-1}
 .trip-form-section-title{display:flex;align-items:center;gap:12px;margin:6px -4px 0;padding:12px 4px 9px;border-bottom:1px solid var(--line)}.trip-form-section-title:first-child{margin-top:-6px}.trip-form-section-title>span{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--green);color:#fff;font-size:11px;font-weight:900}.trip-form-section-title small,.trip-form-section-title strong{display:block}.trip-form-section-title small{color:var(--muted);font-size:9px;letter-spacing:.12em}.trip-form-section-title strong{margin-top:2px;font-size:14px}.trip-fuel-preview{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px;border:1px solid #bcd8cd;border-radius:10px;background:#eef7f3}.trip-fuel-preview span{padding:3px 12px;border-right:1px solid #cddfd8}.trip-fuel-preview span:last-child{border:0}.trip-fuel-preview small,.trip-fuel-preview strong{display:block}.trip-fuel-preview small{color:var(--muted);font-size:10px}.trip-fuel-preview strong{margin-top:5px;color:var(--green);font-size:16px}
 .trip-modal .form-actions{margin-top:20px}
 .result-panel{padding-top:2px}
