@@ -18,12 +18,13 @@ type ImportedCost = Omit<TripCost, "id"> & { row: number; error?: string };
 type Filters = { dateFrom: string; dateTo: string; branch: string; vehicle: string; driver: string; status: string };
 type Branch = { id: number; name: string; active: boolean };
 type FleetStatus = "Activo" | "Taller" | "Inactivo";
-type Vehicle = { id: number; plate: string; active: boolean; fleetStatus?: FleetStatus; brand?: string; model?: string; year?: number; type?: string; branch?: string; currentKm?: number; fuelConsumptionTarget?: number; insuranceExpiry?: string; inspectionExpiry?: string; odometerStatus?: "Funcionando" | "Averiado"; odometerIssueDate?: string; lastValidOdometer?: number; odometerNotes?: string };
+type FuelCalculationMethod = "Hodómetro / tanque lleno" | "GPS / consumo informado" | "GPS / balance del tanque";
+type Vehicle = { id: number; plate: string; active: boolean; fleetStatus?: FleetStatus; brand?: string; model?: string; year?: number; type?: string; branch?: string; currentKm?: number; fuelConsumptionTarget?: number; fuelCalculationMethod?: FuelCalculationMethod; insuranceExpiry?: string; inspectionExpiry?: string; odometerStatus?: "Funcionando" | "Averiado"; odometerIssueDate?: string; lastValidOdometer?: number; odometerNotes?: string };
 type Driver = { id: number; name: string; active: boolean };
-type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; odometerAvailable?: boolean; fullTank: boolean } & ImportMetadata;
+type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; odometerAvailable?: boolean; fullTank: boolean; gpsConsumedLiters?: number; cycleInitialFuelLevel?: number; cycleFinalFuelLevel?: number; consumptionValidated?: boolean } & ImportMetadata;
 type ImportedFuel = Omit<FuelEntry, "id"> & { row: number; error?: string };
 type FuelDistanceMethod = "Odómetro" | "GPS / distancia alternativa";
-type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; startDate?: string; endDate?: string; distanceMethod?: FuelDistanceMethod; distance: number; cost: number; liters: number; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
+type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; startDate?: string; endDate?: string; distanceMethod?: FuelDistanceMethod; distance: number; cost: number; liters: number; consumedLiters: number; consumptionMethod: FuelCalculationMethod; consumptionValidated: boolean; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
 type FuelOpenCycle = { vehicle: string; startOdometer: number; startDate?: string; distanceMethod?: FuelDistanceMethod; entries: FuelEntry[] };
 type MaintenanceType = "Preventivo" | "Correctivo" | "Neumáticos" | "Documentación" | "Otros";
 type Maintenance = { id: number; vehicle: string; date: string; type: MaintenanceType; description: string; km: number; value: number; nextDate?: string; nextKm?: number };
@@ -71,10 +72,14 @@ const freightValue = (trip: Trip, rates: FreightRates) => Math.round(trip.orders
 const tripDistance = (trip: Trip) => trip.distanceSource && trip.distanceSource !== "Odómetro" ? Math.max(0, trip.estimatedKm ?? 0) : Math.max(0, trip.kmFinal - trip.kmInitial);
 const isEstimatedTrip = (trip: Trip) => Boolean(trip.distanceSource && trip.distanceSource !== "Odómetro");
 
-function calculateFuelCycles(entries: FuelEntry[], trips: Trip[]) {
+const calculationMethodFor = (vehicle?: Vehicle): FuelCalculationMethod => vehicle?.fuelCalculationMethod ?? (vehicle?.odometerStatus === "Averiado" ? "GPS / balance del tanque" : "Hodómetro / tanque lleno");
+
+function calculateFuelCycles(entries: FuelEntry[], trips: Trip[], vehicles: Vehicle[]) {
   const cycles: FuelCycle[] = [];
   const openCycles: FuelOpenCycle[] = [];
   Array.from(new Set(entries.map((entry) => entry.vehicle))).forEach((vehicle) => {
+    const vehicleProfile = vehicles.find((item) => item.plate === vehicle);
+    const calculationMethod = calculationMethodFor(vehicleProfile);
     const sorted = entries.filter((entry) => entry.vehicle === vehicle && entry.odometerAvailable !== false).sort((a, b) => a.odometer - b.odometer);
     const fullIndexes = sorted.map((entry, index) => entry.fullTank ? index : -1).filter((index) => index >= 0);
     for (let index = 0; index < fullIndexes.length - 1; index += 1) {
@@ -89,7 +94,7 @@ function calculateFuelCycles(entries: FuelEntry[], trips: Trip[]) {
         const km = Math.max(0, Math.min(trip.kmFinal, end.odometer) - Math.max(trip.kmInitial, start.odometer));
         return { tripId: trip.id, km, value: Math.round(cost * km / distance) };
       }).filter((allocation) => allocation.km > 0);
-      cycles.push({ id: `${vehicle}-${start.odometer}-${end.odometer}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "Odómetro", distance, cost, liters, entryIds: cycleEntries.map((entry) => entry.id), allocations });
+      cycles.push({ id: `${vehicle}-${start.odometer}-${end.odometer}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "Odómetro", distance, cost, liters, consumedLiters: liters, consumptionMethod: "Hodómetro / tanque lleno", consumptionValidated: true, entryIds: cycleEntries.map((entry) => entry.id), allocations });
     }
     if (fullIndexes.length) {
       const lastFullIndex = fullIndexes.at(-1)!;
@@ -106,11 +111,15 @@ function calculateFuelCycles(entries: FuelEntry[], trips: Trip[]) {
       const distance = cycleTrips.reduce((sum, trip) => sum + tripDistance(trip), 0);
       const cost = cycleEntries.reduce((sum, entry) => sum + entry.totalValue, 0);
       const liters = cycleEntries.reduce((sum, entry) => sum + entry.liters, 0);
+      const reportedConsumption = Number(end.gpsConsumedLiters || 0);
+      const balancedConsumption = Number(end.cycleInitialFuelLevel || 0) + liters - Number(end.cycleFinalFuelLevel || 0);
+      const consumedLiters = calculationMethod === "GPS / consumo informado" ? reportedConsumption : calculationMethod === "GPS / balance del tanque" ? balancedConsumption : liters;
+      const consumptionValidated = calculationMethod === "Hodómetro / tanque lleno" || (Boolean(end.consumptionValidated) && consumedLiters > 0);
       const allocations = distance > 0 ? cycleTrips.map((trip) => {
         const km = tripDistance(trip);
         return { tripId: trip.id, km, value: Math.round(cost * km / distance) };
       }).filter((allocation) => allocation.km > 0) : [];
-      cycles.push({ id: `${vehicle}-alternative-${start.id}-${end.id}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "GPS / distancia alternativa", distance, cost, liters, entryIds: cycleEntries.map((entry) => entry.id), allocations });
+      cycles.push({ id: `${vehicle}-alternative-${start.id}-${end.id}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "GPS / distancia alternativa", distance, cost, liters, consumedLiters: consumedLiters > 0 ? consumedLiters : 0, consumptionMethod: calculationMethod, consumptionValidated, entryIds: cycleEntries.map((entry) => entry.id), allocations });
     }
     if (alternativeFullIndexes.length) {
       const lastFullIndex = alternativeFullIndexes.at(-1)!;
@@ -287,7 +296,7 @@ export default function Home() {
   const filteredTripIds = useMemo(() => new Set(filteredTrips.map((trip) => trip.id)), [filteredTrips]);
   const filteredCosts = useMemo(() => tripCosts.filter((cost) => filteredTripIds.has(cost.tripId) && (!filters.dateFrom || cost.date >= filters.dateFrom) && (!filters.dateTo || cost.date <= filters.dateTo)), [tripCosts, filteredTripIds, filters.dateFrom, filters.dateTo]);
   const filteredFuel = useMemo(() => fuelEntries.filter((entry) => (!filters.dateFrom || entry.date >= filters.dateFrom) && (!filters.dateTo || entry.date <= filters.dateTo) && (!filters.vehicle || entry.vehicle === filters.vehicle)), [fuelEntries, filters.dateFrom, filters.dateTo, filters.vehicle]);
-  const fuelCycles = useMemo(() => calculateFuelCycles(fuelEntries, trips), [fuelEntries, trips]);
+  const fuelCycles = useMemo(() => calculateFuelCycles(fuelEntries, trips, vehicles), [fuelEntries, trips, vehicles]);
   const revenue = useMemo(() => filteredTrips.reduce((sum, trip) => sum + freightValue(trip, freightRates), 0), [filteredTrips, freightRates]);
   const invoiced = useMemo(() => filteredTrips.reduce((sum, trip) => sum + invoiceTotal(trip), 0), [filteredTrips]);
   const costs = useMemo(() => filteredCosts.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0), [filteredCosts]);
@@ -396,7 +405,8 @@ export default function Home() {
     const pricePerLiter = Number(form.get("pricePerLiter") || 0);
     const vehicle = selectedTrip?.vehicle ?? String(form.get("vehicle"));
     const vehicleProfile = vehicles.find((item) => item.plate === vehicle);
-    const odometerAvailable = vehicleProfile?.odometerStatus !== "Averiado";
+    const calculationMethod = calculationMethodFor(vehicleProfile);
+    const odometerAvailable = calculationMethod === "Hodómetro / tanque lleno" && vehicleProfile?.odometerStatus !== "Averiado";
     const saved: FuelEntry = {
       id: editingFuel?.id ?? (fuelEntries.length ? Math.max(...fuelEntries.map((entry) => entry.id)) + 1 : 1),
       tripId: selectedTripId,
@@ -409,6 +419,10 @@ export default function Home() {
       odometer: odometerAvailable ? Number(form.get("odometer") || 0) : vehicleProfile?.lastValidOdometer ?? vehicleProfile?.currentKm ?? 0,
       odometerAvailable,
       fullTank: form.get("fullTank") === "on",
+      gpsConsumedLiters: calculationMethod === "GPS / consumo informado" ? Number(form.get("gpsConsumedLiters") || 0) || undefined : undefined,
+      cycleInitialFuelLevel: calculationMethod === "GPS / balance del tanque" ? Number(form.get("cycleInitialFuelLevel") || 0) || undefined : undefined,
+      cycleFinalFuelLevel: calculationMethod === "GPS / balance del tanque" ? Number(form.get("cycleFinalFuelLevel") || 0) || undefined : undefined,
+      consumptionValidated: calculationMethod === "Hodómetro / tanque lleno" ? true : form.get("consumptionValidated") === "on",
       importBatchId: editingFuel?.importBatchId,
       importedAt: editingFuel?.importedAt,
       importFileName: editingFuel?.importFileName,
@@ -517,6 +531,7 @@ export default function Home() {
   const finishingOdometerBroken = finishingVehicleProfile?.odometerStatus === "Averiado";
   const fuelVehicleProfile = vehicles.find((vehicle) => vehicle.plate === fuelVehicleDraft);
   const fuelOdometerBroken = fuelVehicleProfile?.odometerStatus === "Averiado";
+  const fuelCalculationMethod = calculationMethodFor(fuelVehicleProfile);
   const modalResult = modalFreight - modalCosts - modalFuel;
   const modalMargin = modalFreight > 0 ? modalResult / modalFreight * 100 : 0;
   const today = new Date().toISOString().slice(0, 10);
@@ -664,9 +679,12 @@ export default function Home() {
         <label>Fecha<input name="date" type="date" defaultValue={editingFuel?.date ?? "2026-07-24"} required autoFocus/></label>
         <label>Chapa<select name="vehicle" required value={fuelVehicleDraft} onChange={(event) => setFuelVehicleDraft(event.target.value)}><option value="">Seleccione la chapa</option>{activeVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.plate}</option>)}</select></label>
         <label>Estación de servicio<input name="station" defaultValue={editingFuel?.station} placeholder="Nombre o ubicación"/></label>
-        {fuelOdometerBroken ? <div className="odometer-alert wide-field"><strong>⚠ Ciclo por GPS / distancia alternativa</strong><span>Esta carga se guardará sin lectura de odómetro. Dos cargas marcadas como tanque completo cerrarán el ciclo usando solamente las distancias validadas de los viajes del periodo.</span></div> : <label>Hodómetro (km)<input name="odometer" type="number" min="0" step="1" defaultValue={editingFuel?.odometer} placeholder="0" required/></label>}
+        {fuelOdometerBroken || fuelCalculationMethod !== "Hodómetro / tanque lleno" ? <div className="odometer-alert wide-field"><strong>⚠ Ciclo por GPS / distancia alternativa</strong><span>Las distancias validadas de los viajes cerrarán el ciclo. Método de consumo: {fuelCalculationMethod}.</span></div> : <label>Hodómetro (km)<input name="odometer" type="number" min="0" step="1" defaultValue={editingFuel?.odometer} placeholder="0" required/></label>}
         <label>Litros<input name="liters" type="number" min="0.01" step="0.01" defaultValue={editingFuel?.liters} placeholder="0,00" required/></label>
         <label>Precio por litro (₲/L)<input name="pricePerLiter" type="number" min="1" step="0.01" defaultValue={editingFuel?.pricePerLiter ?? (editingFuel && editingFuel.liters > 0 ? editingFuel.totalValue / editingFuel.liters : undefined)} placeholder="0" required/><small>El valor total se calcula automáticamente: litros × precio por litro.</small></label>
+        {fuelCalculationMethod === "GPS / consumo informado" && <label className="wide-field">Consumo informado por GPS (litros)<input name="gpsConsumedLiters" type="number" min="0.01" step="0.01" defaultValue={editingFuel?.gpsConsumedLiters} placeholder="Ej.: 219,9"/><small>Complete este valor en la carga que cierra el ciclo.</small></label>}
+        {fuelCalculationMethod === "GPS / balance del tanque" && <><label>Nivel inicial del tanque (litros)<input name="cycleInitialFuelLevel" type="number" min="0" step="0.01" defaultValue={editingFuel?.cycleInitialFuelLevel} placeholder="Ej.: 426,5"/></label><label>Nivel final del tanque (litros)<input name="cycleFinalFuelLevel" type="number" min="0" step="0.01" defaultValue={editingFuel?.cycleFinalFuelLevel} placeholder="Ej.: 633,8"/></label><div className="odometer-alert wide-field"><strong>Fórmula aplicada</strong><span>Consumo real = nivel inicial + recargas del ciclo − nivel final. Complete los niveles en la carga que cierra el ciclo.</span></div></>}
+        {fuelCalculationMethod !== "Hodómetro / tanque lleno" && <label className="check-field wide-field"><input name="consumptionValidated" type="checkbox" defaultChecked={editingFuel?.consumptionValidated}/> Datos de consumo verificados con el GPS</label>}
         <label className="check-field"><input name="fullTank" type="checkbox" defaultChecked={editingFuel?.fullTank}/> Tanque completo</label>
         <div className="form-actions"><button type="button" className="secondary" onClick={() => { setFuelModal(false); setEditingFuel(null); }}>Cancelar</button><button className="primary" type="submit">{editingFuel ? "Guardar cambios" : "Guardar carga"}</button></div>
       </form>
@@ -781,7 +799,7 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
     .filter((allocation) => allocation.tripId === trip.id)
     .map((allocation) => ({ cycle, allocation })));
   const allocatedFuel = allocations.reduce((totals, { cycle, allocation }) => {
-    const liters = cycle.distance > 0 ? cycle.liters * allocation.km / cycle.distance : 0;
+    const liters = cycle.consumptionValidated && cycle.distance > 0 ? cycle.consumedLiters * allocation.km / cycle.distance : 0;
     return { km: totals.km + allocation.km, liters: totals.liters + liters };
   }, { km: 0, liters: 0 });
   const averageFuelConsumption = allocatedFuel.liters > 0 ? allocatedFuel.km / allocatedFuel.liters : 0;
@@ -814,7 +832,7 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
 
       <section className="report-section"><div className="report-section-title"><span>04</span><div><small>COMBUSTIBLE</small><h2>Prorrateo por ciclos</h2></div><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin ciclo cerrado"}</strong></div>
         <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Promedio</th><th>Km asignados</th><th>Participación</th><th>Valor asignado</th></tr></thead><tbody>
-          {allocations.length ? allocations.map(({ cycle, allocation }) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{number.format(cycle.startOdometer)} → {number.format(cycle.endOdometer)}</td><td>{cycle.vehicle}</td><td>{number.format(cycle.distance)} km</td><td><strong>{cycle.liters > 0 ? `${(cycle.distance / cycle.liters).toFixed(2)} km/L` : "—"}</strong></td><td>{number.format(allocation.km)} km</td><td>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td><td><strong>{money.format(allocation.value)}</strong></td></tr>) : <tr><td colSpan={7}>Ciclo abierto o sin combustible asignado definitivamente.</td></tr>}
+          {allocations.length ? allocations.map(({ cycle, allocation }) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{cycle.distanceMethod === "GPS / distancia alternativa" ? `${cycle.startDate ?? "—"} → ${cycle.endDate ?? "—"}` : `${number.format(cycle.startOdometer)} → ${number.format(cycle.endOdometer)}`}</td><td>{cycle.vehicle}</td><td>{number.format(cycle.distance)} km</td><td><strong>{cycle.consumptionValidated && cycle.consumedLiters > 0 ? `${(cycle.distance / cycle.consumedLiters).toFixed(2)} km/L` : "Pendiente de validación"}</strong><small>{cycle.consumptionMethod}</small></td><td>{number.format(allocation.km)} km</td><td>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td><td><strong>{money.format(allocation.value)}</strong></td></tr>) : <tr><td colSpan={7}>Ciclo abierto o sin combustible asignado definitivamente.</td></tr>}
         </tbody></table></div>
       </section>
 
@@ -952,14 +970,15 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
   const totalLiters = entries.reduce((sum, entry) => sum + entry.liters, 0);
   const totalValue = entries.reduce((sum, entry) => sum + entry.totalValue, 0);
   const consumptionByVehicle = Array.from(new Set(entries.map((entry) => entry.vehicle))).map((vehicle) => {
-    const vehicleCycles = reportCycles.filter((cycle) => cycle.vehicle === vehicle && cycle.distance > 0);
+    const vehicleCycles = reportCycles.filter((cycle) => cycle.vehicle === vehicle && cycle.distance > 0 && cycle.consumptionValidated);
     const distance = vehicleCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-    const consumed = vehicleCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+    const consumed = vehicleCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
     const alternative = vehicleCycles.some((cycle) => cycle.distanceMethod === "GPS / distancia alternativa");
     return { vehicle, average: consumed > 0 ? distance / consumed : 0, distance, alternative };
   });
-  const closedDistance = reportCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-  const closedLiters = reportCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+  const validatedReportCycles = reportCycles.filter((cycle) => cycle.consumptionValidated);
+  const closedDistance = validatedReportCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
+  const closedLiters = validatedReportCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
   const averageConsumption = closedLiters > 0 && closedDistance > 0 ? closedDistance / closedLiters : 0;
   return <section className="fuel-layout">
     <div className="cost-summary fuel-summary">
@@ -983,8 +1002,9 @@ function FuelModule({ entries, allEntries, setEntries, vehicles, vehicleFilter, 
 }
 
 function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { entries: FuelEntry[]; vehicleFilter: string; cycles: FuelCycle[]; openCycles: FuelOpenCycle[]; onClose: () => void }) {
-  const closedDistance = cycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-  const closedLiters = cycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+  const validatedCycles = cycles.filter((cycle) => cycle.consumptionValidated);
+  const closedDistance = validatedCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
+  const closedLiters = validatedCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
   const closedCost = cycles.reduce((sum, cycle) => sum + cycle.cost, 0);
   const allocated = cycles.reduce((sum, cycle) => sum + cycle.allocations.reduce((subtotal, item) => subtotal + item.value, 0), 0);
   const average = closedLiters > 0 ? closedDistance / closedLiters : 0;
@@ -1001,8 +1021,8 @@ function FuelReport({ entries, vehicleFilter, cycles, openCycles, onClose }: { e
       </section>
       <section className="report-section"><div className="report-section-title"><span>02</span><div><small>DETALLE</small><h2>Ciclos y prorrateo por viaje</h2></div></div>
         <div className="cycle-explanation">Costo del ciclo × (km del viaje dentro del ciclo ÷ km total del ciclo). Los kilómetros sin viaje vinculado quedan sin asignar.</div>
-        <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Costo</th><th>Viaje / Km</th><th>Valor asignado</th></tr></thead><tbody>
-          {cycles.map((cycle) => cycle.allocations.length ? cycle.allocations.map((allocation, index) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{index === 0 ? <>{cycleLabel(cycle)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></> : ""}</td><td>{index === 0 ? <strong>{cycle.vehicle}</strong> : ""}</td><td>{index === 0 ? `${number.format(cycle.distance)} km` : ""}</td><td>{index === 0 ? money.format(cycle.cost) : ""}</td><td><strong>Viaje N.º {allocation.tripId}</strong><br/>{number.format(allocation.km)} km</td><td><strong>{money.format(allocation.value)}</strong><br/>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td></tr>) : <tr key={cycle.id}><td>{cycleLabel(cycle)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></td><td><strong>{cycle.vehicle}</strong></td><td>{number.format(cycle.distance)} km</td><td>{money.format(cycle.cost)}</td><td colSpan={2}>{cycle.distanceMethod === "GPS / distancia alternativa" ? "Sin viajes con distancia alternativa validada en el periodo" : "Sin viajes con km dentro del ciclo"}</td></tr>)}
+        <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Consumo validado</th><th>Costo</th><th>Viaje / Km</th><th>Valor asignado</th></tr></thead><tbody>
+          {cycles.map((cycle) => cycle.allocations.length ? cycle.allocations.map((allocation, index) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{index === 0 ? <>{cycleLabel(cycle)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></> : ""}</td><td>{index === 0 ? <strong>{cycle.vehicle}</strong> : ""}</td><td>{index === 0 ? `${number.format(cycle.distance)} km` : ""}</td><td>{index === 0 ? <><strong>{cycle.consumptionValidated && cycle.consumedLiters > 0 ? `${(cycle.distance / cycle.consumedLiters).toFixed(2)} km/L` : "Pendiente"}</strong><small>{cycle.consumptionMethod}</small></> : ""}</td><td>{index === 0 ? money.format(cycle.cost) : ""}</td><td><strong>Viaje N.º {allocation.tripId}</strong><br/>{number.format(allocation.km)} km</td><td><strong>{money.format(allocation.value)}</strong><br/>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td></tr>) : <tr key={cycle.id}><td>{cycleLabel(cycle)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></td><td><strong>{cycle.vehicle}</strong></td><td>{number.format(cycle.distance)} km</td><td>{cycle.consumptionValidated && cycle.consumedLiters > 0 ? `${(cycle.distance / cycle.consumedLiters).toFixed(2)} km/L` : "Pendiente de validación"}</td><td>{money.format(cycle.cost)}</td><td colSpan={2}>{cycle.distanceMethod === "GPS / distancia alternativa" ? "Sin viajes con distancia alternativa validada en el periodo" : "Sin viajes con km dentro del ciclo"}</td></tr>)}
           {openCycles.filter((cycle) => cycle.entries.length > 0).map((cycle) => <tr key={`open-${cycle.vehicle}-${cycle.distanceMethod}`} className="open-cycle"><td>Desde {cycle.distanceMethod === "GPS / distancia alternativa" && cycle.startDate ? formatReportDate(cycle.startDate) : number.format(cycle.startOdometer)}<small>{cycle.distanceMethod ?? "Odómetro"}</small></td><td><strong>{cycle.vehicle}</strong></td><td>En curso</td><td>{money.format(cycle.entries.reduce((sum, entry) => sum + entry.totalValue, 0))}</td><td colSpan={2}>Pendiente de la próxima carga completa</td></tr>)}
           {!cycles.length && !openCycles.some((cycle) => cycle.entries.length > 0) && <tr><td colSpan={6}>No hay ciclos de combustible para informar.</td></tr>}
         </tbody></table></div>
@@ -1045,12 +1065,12 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     const national = driverTrips.some((trip) => trip.orders.some((order) => order.freightType === "Nacional" || order.freightType === "Remisión"));
     const category = national ? "Nacional" : "Local";
     const vehicleList = Array.from(new Set(driverTrips.map((trip) => trip.vehicle)));
-    const monthCycles = cycles.filter((cycle) => vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === month);
-    const previousCycles = cycles.filter((cycle) => vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === previousMonth);
+    const monthCycles = cycles.filter((cycle) => cycle.consumptionValidated && vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === month);
+    const previousCycles = cycles.filter((cycle) => cycle.consumptionValidated && vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === previousMonth);
     const totalDistance = monthCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-    const totalLiters = monthCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+    const totalLiters = monthCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
     const previousDistance = previousCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-    const previousLiters = previousCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+    const previousLiters = previousCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
     const consumption = totalLiters > 0 ? totalDistance / totalLiters : 0;
     const previousConsumption = previousLiters > 0 ? previousDistance / previousLiters : 0;
     const targetedCycles = monthCycles.filter((cycle) => targets[cycle.vehicle]);
@@ -1201,12 +1221,12 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
       const national = driverTrips.some((trip) => trip.orders.some((order) => order.freightType === "Nacional" || order.freightType === "Remisión"));
       const category: "Local" | "Nacional" = national ? "Nacional" : "Local";
       const vehicleList = Array.from(new Set(driverTrips.map((trip) => trip.vehicle)));
-      const monthCycles = cycles.filter((cycle) => vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === period);
-      const historicalCycles = cycles.filter((cycle) => vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) < period).sort((a, b) => cycleMonth(b).localeCompare(cycleMonth(a))).slice(0, 3);
+      const monthCycles = cycles.filter((cycle) => cycle.consumptionValidated && vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === period);
+      const historicalCycles = cycles.filter((cycle) => cycle.consumptionValidated && vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) < period).sort((a, b) => cycleMonth(b).localeCompare(cycleMonth(a))).slice(0, 3);
       const totalDistance = monthCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-      const totalLiters = monthCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+      const totalLiters = monthCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
       const historicalDistance = historicalCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-      const historicalLiters = historicalCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+      const historicalLiters = historicalCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
       const consumption = totalLiters > 0 ? totalDistance / totalLiters : 0;
       const previousConsumption = historicalLiters > 0 ? historicalDistance / historicalLiters : 0;
       const targetForVehicle = (plate: string) => vehicles.find((vehicle) => vehicle.plate === plate)?.fuelConsumptionTarget ?? defaultFuelTargets[plate] ?? 0;
@@ -1245,8 +1265,8 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
   const reportHelper = reportDriver ? monthlyEntries.find((entry) => entry.personType === "Ayudante" && entry.driver === reportDriver.name) : undefined;
   const reportVehicles = reportDriver?.vehicles.split(", ").filter(Boolean) ?? [];
   const reportCycles = reportDriver ? cycles.filter((cycle) => reportVehicles.includes(cycle.vehicle) && cycleMonth(cycle) === month) : [];
-  const reportDistance = reportCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-  const reportLiters = reportCycles.reduce((sum, cycle) => sum + cycle.liters, 0);
+  const reportDistance = reportCycles.filter((cycle) => cycle.consumptionValidated).reduce((sum, cycle) => sum + cycle.distance, 0);
+  const reportLiters = reportCycles.filter((cycle) => cycle.consumptionValidated).reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
   const reportEvolution = reportDriver?.previousConsumption && reportDriver.consumption ? (reportDriver.consumption - reportDriver.previousConsumption) / reportDriver.previousConsumption * 100 : null;
   const currentHistory = closures.some((closure) => closure.month === latestMonth) ? closures : [...closures, { month: latestMonth, closedAt: "", entries: calculateEntries(latestMonth) }];
   const historyGroups = Array.from(new Set(currentHistory.flatMap((closure) => closure.entries.map((entry) => `${entry.personType}|${entry.name}`)))).map((key) => {
@@ -1406,9 +1426,9 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
     return Array.from(map.values()).sort((a, b) => b.orders - a.orders);
   })();
   const operationalRows = rows.map((row) => {
-    const matchingCycles = fuelCycles.map((cycle) => ({ cycle, allocation: cycle.allocations.find((allocation) => allocation.tripId === row.trip.id) })).filter((item) => item.allocation && item.cycle.liters > 0);
+    const matchingCycles = fuelCycles.map((cycle) => ({ cycle, allocation: cycle.allocations.find((allocation) => allocation.tripId === row.trip.id) })).filter((item) => item.allocation && item.cycle.consumptionValidated && item.cycle.consumedLiters > 0);
     const cycleKm = matchingCycles.reduce((sum, item) => sum + (item.allocation?.km ?? 0), 0);
-    const consumption = cycleKm > 0 ? matchingCycles.reduce((sum, item) => sum + (item.cycle.distance / item.cycle.liters) * (item.allocation?.km ?? 0), 0) / cycleKm : 0;
+    const consumption = cycleKm > 0 ? matchingCycles.reduce((sum, item) => sum + (item.cycle.distance / item.cycle.consumedLiters) * (item.allocation?.km ?? 0), 0) / cycleKm : 0;
     return { ...row, consumption, capacity: vehicles.find((vehicle) => vehicle.plate === row.trip.vehicle)?.type || "Sin dato" };
   }).sort((a, b) => b.trip.startDate.localeCompare(a.trip.startDate) || b.trip.id - a.trip.id);
   const vehicleGroups = (() => {
@@ -1795,7 +1815,9 @@ function FleetModule({ vehicles, setVehicles, maintenance, setMaintenance, trips
     const fleetStatus = String(form.get("fleetStatus") || "Activo") as FleetStatus;
     const { inspectionExpiry: _legacyDinatrán, ...vehicleProfile } = vehicleModal;
     const odometerStatus = String(form.get("odometerStatus") || "Funcionando") as "Funcionando" | "Averiado";
-    const saved: Vehicle = { ...vehicleProfile, active: fleetStatus === "Activo", fleetStatus, brand: String(form.get("brand") || ""), model: String(form.get("model") || ""), year: Number(form.get("year") || 0) || undefined, type: String(form.get("type") || ""), branch: String(form.get("branch") || ""), currentKm: Number(form.get("currentKm") || 0), fuelConsumptionTarget: Number(form.get("fuelConsumptionTarget") || 0) || undefined, odometerStatus, odometerIssueDate: odometerStatus === "Averiado" ? String(form.get("odometerIssueDate") || "") || undefined : undefined, lastValidOdometer: odometerStatus === "Averiado" ? Number(form.get("lastValidOdometer") || 0) || undefined : undefined, odometerNotes: odometerStatus === "Averiado" ? String(form.get("odometerNotes") || "") || undefined : undefined };
+    const selectedFuelMethod = String(form.get("fuelCalculationMethod") || (odometerStatus === "Averiado" ? "GPS / balance del tanque" : "Hodómetro / tanque lleno")) as FuelCalculationMethod;
+    const fuelCalculationMethod = odometerStatus === "Averiado" && selectedFuelMethod === "Hodómetro / tanque lleno" ? "GPS / balance del tanque" : selectedFuelMethod;
+    const saved: Vehicle = { ...vehicleProfile, active: fleetStatus === "Activo", fleetStatus, brand: String(form.get("brand") || ""), model: String(form.get("model") || ""), year: Number(form.get("year") || 0) || undefined, type: String(form.get("type") || ""), branch: String(form.get("branch") || ""), currentKm: Number(form.get("currentKm") || 0), fuelConsumptionTarget: Number(form.get("fuelConsumptionTarget") || 0) || undefined, fuelCalculationMethod, odometerStatus, odometerIssueDate: odometerStatus === "Averiado" ? String(form.get("odometerIssueDate") || "") || undefined : undefined, lastValidOdometer: odometerStatus === "Averiado" ? Number(form.get("lastValidOdometer") || 0) || undefined : undefined, odometerNotes: odometerStatus === "Averiado" ? String(form.get("odometerNotes") || "") || undefined : undefined };
     setVehicles(vehicles.map((vehicle) => vehicle.id === saved.id ? saved : vehicle));
     setVehicleModal(null); notify(`Ficha de ${saved.plate} actualizada.`);
   }
@@ -1833,14 +1855,14 @@ function FleetModule({ vehicles, setVehicles, maintenance, setMaintenance, trips
         <td>{vehicle.branch || "Sin asignar"}</td>
         <td><strong>{number.format(vehicle.odometerStatus === "Averiado" ? vehicle.lastValidOdometer ?? km : km)} km</strong>{vehicle.odometerStatus === "Averiado" && <small>Última lectura válida</small>}</td>
         <td>{trips.filter((trip) => trip.vehicle === vehicle.plate).length}</td>
-        <td><strong>{fuelTarget ? `${fuelTarget.toFixed(2)} km/L` : "Sin meta"}</strong><small>Usada en bonificaciones</small></td>
+        <td><strong>{fuelTarget ? `${fuelTarget.toFixed(2)} km/L` : "Sin meta"}</strong><small>Usada en bonificaciones</small><small>{calculationMethodFor(vehicle)}</small></td>
         <td>{nextMaintenance ? <div className="fleet-maintenance-cell"><span className={`maintenance-status ${nextMaintenance.status}`}>{nextMaintenance.status === "overdue" ? "Vencido" : nextMaintenance.status === "upcoming" ? "Próximo" : "Programado"}</span><small>{nextMaintenance.item.description}</small><small>{nextMaintenance.details.join(" · ")}</small></div> : <span className="muted-value">Sin programación</span>}</td>
         <td><span className={`branch-status ${fleetStatus === "Activo" ? "active" : fleetStatus === "Taller" ? "workshop" : ""}`}>{fleetStatus}</span></td>
         <td><div className="fleet-actions"><button className="edit-action" onClick={() => setVehicleModal(vehicle)}>Editar</button><button className="secondary" onClick={() => { setSelectedPlate(vehicle.plate); setMaintenanceModal("new"); }}>Mantenimiento</button></div></td>
       </tr>;
     })}</tbody></table></div></div>
     <div className="table-card"><div className="card-heading"><div><p className="eyebrow">Historial</p><h2>Mantenimientos y servicios</h2></div><strong>{money.format(maintenanceTotal)} · {maintenance.length} registros</strong></div><div className="table-scroll"><table><thead><tr><th>Fecha</th><th>Chapa</th><th>Tipo</th><th>Descripción</th><th>Km</th><th>Valor</th><th>Próximo control</th><th>Alerta</th><th>Acciones</th></tr></thead><tbody>{maintenance.map((item) => { const alert = maintenanceAlert(item); return <tr key={item.id}><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${item.date}T12:00:00`))}</td><td><strong>{item.vehicle}</strong></td><td><span className="cost-badge">{item.type}</span></td><td style={{ width: 360, minWidth: 240, maxWidth: 360, whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: 1.45 }}>{item.description}</td><td>{number.format(item.km)} km</td><td><strong>{money.format(item.value)}</strong></td><td>{alert.details.length ? alert.details.map((detail) => <small className="maintenance-control" key={detail}>{detail}</small>) : "—"}</td><td>{alert.details.length ? <span className={`maintenance-status ${alert.status}`}>{alert.status === "overdue" ? "Vencido" : alert.status === "upcoming" ? "Próximo" : "Programado"}</span> : "—"}</td><td><div className="row-actions"><button className="edit-action" onClick={() => setMaintenanceModal(item)}>Editar</button><button className="delete-action" onClick={() => deleteMaintenance(item)}>Eliminar</button></div></td></tr>; })}</tbody></table></div></div>
-    {vehicleModal && <div className="modal-backdrop" onMouseDown={() => setVehicleModal(null)}><div className="modal fleet-modal" onMouseDown={(e) => e.stopPropagation()}><button className="close" onClick={() => setVehicleModal(null)}>×</button><p className="eyebrow">Ficha del vehículo</p><h2>{vehicleModal.plate}</h2><form onSubmit={saveVehicleProfile}><label>Marca<input name="brand" defaultValue={vehicleModal.brand}/></label><label>Modelo<input name="model" defaultValue={vehicleModal.model}/></label><label>Año<input name="year" type="number" min="1980" max="2100" defaultValue={vehicleModal.year}/></label><label>Tipo<select name="type" defaultValue={vehicleModal.type}><option value="">Seleccione</option><option>Camión</option><option>Tracto camión</option><option>Furgón</option><option>Utilitario</option><option>Otro</option></select></label><label>Sucursal<select name="branch" defaultValue={vehicleModal.branch}><option value="">Sin asignar</option>{branches.filter((b) => b.active).map((b) => <option key={b.id}>{b.name}</option>)}</select></label><label>Estado<select name="fleetStatus" defaultValue={vehicleModal.fleetStatus ?? (vehicleModal.active ? "Activo" : "Inactivo")}><option>Activo</option><option>Taller</option><option>Inactivo</option></select></label><label>Kilometraje actual<input name="currentKm" type="number" min="0" defaultValue={vehicleKm(vehicleModal)}/></label><label>Promedio objetivo de combustible (km/L)<input name="fuelConsumptionTarget" type="number" min="0.01" step="0.01" required defaultValue={vehicleModal.fuelConsumptionTarget ?? defaultFuelTargets[vehicleModal.plate] ?? ""}/><small>Esta meta se utilizará para calcular la bonificación por consumo.</small></label><div className="odometer-settings wide-field"><h3>Control del odómetro</h3><label>Estado del odómetro<select name="odometerStatus" defaultValue={vehicleModal.odometerStatus ?? "Funcionando"}><option>Funcionando</option><option>Averiado</option></select></label><label>Fecha de la avería<input name="odometerIssueDate" type="date" defaultValue={vehicleModal.odometerIssueDate}/></label><label>Última lectura válida<input name="lastValidOdometer" type="number" min="0" defaultValue={vehicleModal.lastValidOdometer ?? vehicleKm(vehicleModal)}/></label><label>Observación<input name="odometerNotes" defaultValue={vehicleModal.odometerNotes} placeholder="Ej.: panel pendiente de reparación"/></label></div><div className="form-actions"><button type="button" className="secondary" onClick={() => setVehicleModal(null)}>Cancelar</button><button className="primary">Guardar ficha</button></div></form></div></div>}
+    {vehicleModal && <div className="modal-backdrop" onMouseDown={() => setVehicleModal(null)}><div className="modal fleet-modal" onMouseDown={(e) => e.stopPropagation()}><button className="close" onClick={() => setVehicleModal(null)}>×</button><p className="eyebrow">Ficha del vehículo</p><h2>{vehicleModal.plate}</h2><form onSubmit={saveVehicleProfile}><label>Marca<input name="brand" defaultValue={vehicleModal.brand}/></label><label>Modelo<input name="model" defaultValue={vehicleModal.model}/></label><label>Año<input name="year" type="number" min="1980" max="2100" defaultValue={vehicleModal.year}/></label><label>Tipo<select name="type" defaultValue={vehicleModal.type}><option value="">Seleccione</option><option>Camión</option><option>Tracto camión</option><option>Furgón</option><option>Utilitario</option><option>Otro</option></select></label><label>Sucursal<select name="branch" defaultValue={vehicleModal.branch}><option value="">Sin asignar</option>{branches.filter((b) => b.active).map((b) => <option key={b.id}>{b.name}</option>)}</select></label><label>Estado<select name="fleetStatus" defaultValue={vehicleModal.fleetStatus ?? (vehicleModal.active ? "Activo" : "Inactivo")}><option>Activo</option><option>Taller</option><option>Inactivo</option></select></label><label>Kilometraje actual<input name="currentKm" type="number" min="0" defaultValue={vehicleKm(vehicleModal)}/></label><label>Promedio objetivo de combustible (km/L)<input name="fuelConsumptionTarget" type="number" min="0.01" step="0.01" required defaultValue={vehicleModal.fuelConsumptionTarget ?? defaultFuelTargets[vehicleModal.plate] ?? ""}/><small>Esta meta se utilizará para calcular la bonificación por consumo.</small></label><label className="wide-field">Método de cálculo del consumo<select name="fuelCalculationMethod" defaultValue={calculationMethodFor(vehicleModal)}><option>Hodómetro / tanque lleno</option><option>GPS / consumo informado</option><option>GPS / balance del tanque</option></select><small>El costo usa las cargas compradas; la media usa el combustible realmente consumido.</small></label><div className="odometer-settings wide-field"><h3>Control del odómetro</h3><label>Estado del odómetro<select name="odometerStatus" defaultValue={vehicleModal.odometerStatus ?? "Funcionando"}><option>Funcionando</option><option>Averiado</option></select></label><label>Fecha de la avería<input name="odometerIssueDate" type="date" defaultValue={vehicleModal.odometerIssueDate}/></label><label>Última lectura válida<input name="lastValidOdometer" type="number" min="0" defaultValue={vehicleModal.lastValidOdometer ?? vehicleKm(vehicleModal)}/></label><label>Observación<input name="odometerNotes" defaultValue={vehicleModal.odometerNotes} placeholder="Ej.: panel pendiente de reparación"/></label></div><div className="form-actions"><button type="button" className="secondary" onClick={() => setVehicleModal(null)}>Cancelar</button><button className="primary">Guardar ficha</button></div></form></div></div>}
     {maintenanceModal && <div className="modal-backdrop" onMouseDown={() => setMaintenanceModal(null)}><div className="modal fleet-modal" onMouseDown={(e) => e.stopPropagation()}><button className="close" onClick={() => setMaintenanceModal(null)}>×</button><p className="eyebrow">Flota</p><h2>{maintenanceModal === "new" ? "Nuevo mantenimiento" : "Editar mantenimiento"}</h2><form onSubmit={saveMaintenance}><label>Chapa<select name="vehicle" required defaultValue={maintenanceModal === "new" ? selectedPlate : maintenanceModal.vehicle}>{vehicles.map((v) => <option key={v.id}>{v.plate}</option>)}</select></label><label>Fecha<input name="date" type="date" required defaultValue={maintenanceModal === "new" ? today : maintenanceModal.date}/></label><label>Tipo<select name="type" required defaultValue={maintenanceModal === "new" ? "Preventivo" : maintenanceModal.type}>{(["Preventivo","Correctivo","Neumáticos","Documentación","Otros"] as MaintenanceType[]).map((type) => <option key={type}>{type}</option>)}</select></label><label>Kilometraje<input name="km" type="number" min="0" required defaultValue={maintenanceModal === "new" ? latestKm(selectedPlate) : maintenanceModal.km}/></label><label className="wide-field">Descripción<input name="description" required defaultValue={maintenanceModal === "new" ? "" : maintenanceModal.description}/></label><label>Valor (₲)<input name="value" type="number" min="0" required defaultValue={maintenanceModal === "new" ? 0 : maintenanceModal.value}/></label><div className="maintenance-schedule wide-field"><strong>Aviso del próximo mantenimiento</strong><small>Puede programarlo por kilometraje, por fecha o por ambos. Si completa ambos, se avisará por el que venza primero.</small></div><label>Próxima fecha<input name="nextDate" type="date" defaultValue={maintenanceModal === "new" ? "" : maintenanceModal.nextDate}/></label><label>Próximo km<input name="nextKm" type="number" min="0" defaultValue={maintenanceModal === "new" ? "" : maintenanceModal.nextKm}/></label><div className="form-actions"><button type="button" className="secondary" onClick={() => setMaintenanceModal(null)}>Cancelar</button><button className="primary">Guardar mantenimiento</button></div></form></div></div>}
   </section>;
 }
