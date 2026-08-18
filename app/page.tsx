@@ -189,6 +189,12 @@ export default function Home() {
   const [vehicleDraft, setVehicleDraft] = useState("");
   const [driverDraft, setDriverDraft] = useState("");
   const [helperDraft, setHelperDraft] = useState("");
+  const [tripRefueledDraft, setTripRefueledDraft] = useState(false);
+  const [tripFuelLitersDraft, setTripFuelLitersDraft] = useState(0);
+  const [tripFuelPriceDraft, setTripFuelPriceDraft] = useState(0);
+  const [tripFuelInitialDraft, setTripFuelInitialDraft] = useState(0);
+  const [tripFuelFinalDraft, setTripFuelFinalDraft] = useState(0);
+  const [tripIdleDraft, setTripIdleDraft] = useState(0);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -473,10 +479,21 @@ export default function Home() {
       const missingFuelData = tripFuelMethod === "GPS / consumo informado" ? !saved.gpsConsumedLiters : saved.fuelInitialLevel === undefined || saved.fuelFinalLevel === undefined;
       if (missingFuelData || !saved.fuelDataValidated) { setTripTab("data"); setTripFormError("Complete y valide los datos de combustible del GPS antes de finalizar el viaje."); return; }
     }
+    const tripRefueled = form.get("tripRefueled") === "Sí";
+    const tripFuelLiters = Number(form.get("tripFuelLiters") || 0);
+    const tripFuelPrice = Number(form.get("tripFuelPrice") || 0);
+    if (tripRefueled && (tripFuelLiters <= 0 || tripFuelPrice <= 0)) { setTripTab("data"); setTripFormError("Informe los litros y el precio por litro de la carga de combustible."); return; }
     setTripFormError("");
     const firstCostId = tripCosts.length ? Math.max(...tripCosts.map((cost) => cost.id)) + 1 : 1;
     const newCosts = tripCostRows.map((row, index) => ({ id: firstCostId + index, tripId: saved.id, date: String(form.get(`costDate-${row.id}`) || saved.startDate), type: String(form.get(`costType-${row.id}`) || "Consumición") as CostType, description: String(form.get(`costDescription-${row.id}`) || ""), quantity: Number(form.get(`costQuantity-${row.id}`) || 0), unitValue: Number(form.get(`costUnitValue-${row.id}`) || 0) })).filter((cost) => cost.quantity > 0 && cost.unitValue > 0);
     setTrips(editingTrip ? trips.map((trip) => trip.id === saved.id ? saved : trip) : [saved, ...trips]); setModal(false); setInvoiceRows([]);
+    if (tripRefueled) {
+      const linkedFuel = fuelEntries.find((entry) => entry.tripId === saved.id);
+      const vehicleProfile = vehicles.find((vehicle) => vehicle.plate === saved.vehicle);
+      const odometerAvailable = calculationMethodFor(vehicleProfile) === "Hodómetro / tanque lleno" && vehicleProfile?.odometerStatus !== "Averiado";
+      const fuelEntry: FuelEntry = { id: linkedFuel?.id ?? (fuelEntries.length ? Math.max(...fuelEntries.map((entry) => entry.id)) + 1 : 1), tripId: saved.id, date: saved.endDate || saved.startDate, vehicle: saved.vehicle, station: String(form.get("tripFuelStation") || ""), liters: tripFuelLiters, pricePerLiter: tripFuelPrice, totalValue: Math.round(tripFuelLiters * tripFuelPrice), odometer: odometerAvailable ? (saved.kmFinal || saved.kmInitial) : vehicleProfile?.lastValidOdometer ?? vehicleProfile?.currentKm ?? 0, odometerAvailable, fullTank: form.get("tripFuelFullTank") === "on", consumptionValidated: tripFuelMethod === "Hodómetro / tanque lleno" ? true : saved.fuelDataValidated };
+      setFuelEntries(linkedFuel ? fuelEntries.map((entry) => entry.id === linkedFuel.id ? fuelEntry : entry) : [fuelEntry, ...fuelEntries]);
+    }
     if (newCosts.length) setTripCosts([...newCosts, ...tripCosts]);
     setTripCostRows([{ id: 1 }]);
     if (!editingTrip) {
@@ -496,6 +513,13 @@ export default function Home() {
     setVehicleDraft(trip?.vehicle ?? "");
     setDriverDraft(trip?.driver ?? "");
     setHelperDraft(trip?.helper ?? helperAssignments.find((assignment) => assignment.driver === trip?.driver)?.helper ?? "");
+    const linkedFuel = trip ? fuelEntries.find((entry) => entry.tripId === trip.id) : undefined;
+    setTripRefueledDraft(Boolean(linkedFuel));
+    setTripFuelLitersDraft(linkedFuel?.liters ?? 0);
+    setTripFuelPriceDraft(linkedFuel?.pricePerLiter ?? 0);
+    setTripFuelInitialDraft(trip?.fuelInitialLevel ?? 0);
+    setTripFuelFinalDraft(trip?.fuelFinalLevel ?? 0);
+    setTripIdleDraft(trip?.idleConsumedLiters ?? 0);
     setTripTab("data");
     setInvoiceRows(trip ? trip.orders.map((_, index) => ({ id: index + 1 })) : []);
     setTripCostRows([{ id: 1 }]);
@@ -641,6 +665,7 @@ export default function Home() {
       </div>
       <form onSubmit={saveTrip}>
         <section className="trip-tab-panel data-panel" hidden={tripTab !== "data"}>
+          <div className="trip-form-section-title wide-field"><span>01</span><div><small>OPERACIÓN</small><strong>Datos del viaje</strong></div></div>
           <label>N.º de viaje<input value={editingTrip?.id ?? (trips.length ? Math.max(...trips.map((trip) => trip.id)) + 1 : 1)} readOnly aria-label="Número secuencial del viaje"/></label>
           <label>Sucursal<select name="branch" required defaultValue={editingTrip?.branch ?? ""}><option value="" disabled>Seleccione la sucursal</option>{activeBranches.map((branch) => <option key={branch.id} value={branch.name}>{branch.name}</option>)}</select></label>
           <label>Chapa<select name="vehicle" required value={vehicleDraft} onChange={(event) => { const plate = event.target.value; setVehicleDraft(plate); if (!editingTrip) { const driver = latestVehicleDriver(plate); setKmInitialDraft(latestVehicleKm(plate)); setKmFinalDraft(0); setDriverDraft(driver); setHelperDraft(helperForDriver(driver)); } }}><option value="" disabled>Seleccione la chapa</option>{activeVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.plate}>{vehicle.plate}</option>)}</select></label>
@@ -648,11 +673,16 @@ export default function Home() {
           <label>Ayudante<select name="helper" value={helperDraft} onChange={(event) => setHelperDraft(event.target.value)}><option value="">Sin ayudante</option>{registeredHelpers.map((helper) => <option key={helper} value={helper}>{helper}</option>)}</select></label>
           <label>Fecha inicial<input name="startDate" type="date" defaultValue={editingTrip?.startDate ?? today} required/></label>
           <label>Fecha final<input name="endDate" type="date" min={editingTrip?.startDate} defaultValue={editingTrip?.endDate ?? ""}/></label>
+          <div className="trip-form-section-title wide-field"><span>02</span><div><small>RECORRIDO</small><strong>Distancia recorrida</strong></div></div>
           {selectedOdometerBroken && <div className="odometer-alert wide-field"><strong>⚠ Odómetro averiado</strong><span>Última lectura válida: {number.format(selectedVehicleProfile?.lastValidOdometer ?? selectedVehicleProfile?.currentKm ?? 0)} km. Registre la distancia por una fuente alternativa.</span></div>}
           <label>Origen del kilometraje<select name="distanceSource" defaultValue={editingTrip?.distanceSource ?? (selectedOdometerBroken ? "GPS" : "Odómetro")}><option disabled={selectedOdometerBroken}>Odómetro</option><option>GPS</option><option>Ruta</option><option>Manual</option></select></label>
           {!selectedOdometerBroken && <><label>Km inicial<input name="kmInitial" type="number" min="0" placeholder="0" value={kmInitialDraft || ""} onChange={(event) => setKmInitialDraft(Number(event.target.value))} required/></label><label>Km final<input name="kmFinal" type="number" min={kmInitialDraft} placeholder="Opcional al iniciar" value={kmFinalDraft || ""} onChange={(event) => setKmFinalDraft(Number(event.target.value))}/></label><label>Total recorrido<input value={kmFinalDraft >= kmInitialDraft && kmFinalDraft > 0 ? kmFinalDraft - kmInitialDraft : 0} readOnly aria-label="Total de kilómetros recorridos calculado automáticamente"/></label></>}
           {selectedOdometerBroken && <><input type="hidden" name="kmInitial" value={selectedVehicleProfile?.lastValidOdometer ?? selectedVehicleProfile?.currentKm ?? 0}/><input type="hidden" name="kmFinal" value="0"/><label>Kilometraje estimado<input name="estimatedKm" type="number" min="1" step="1" defaultValue={editingTrip?.estimatedKm} required/></label><label>Validado por<input name="validatedBy" defaultValue={editingTrip?.validatedBy} placeholder="Nombre del responsable"/></label><label className="check-field"><input name="kmValidated" type="checkbox" defaultChecked={editingTrip?.kmValidated}/><span>Distancia revisada y aprobada</span></label></>}
-          {selectedFuelCalculationMethod !== "Hodómetro / tanque lleno" && <><div className="odometer-alert wide-field"><strong>Consumo de combustible del viaje</strong><span>Método configurado para {vehicleDraft}: {selectedFuelCalculationMethod}. Estos datos alimentarán automáticamente los ciclos, informes y bonificaciones.</span></div>{selectedFuelCalculationMethod === "GPS / consumo informado" ? <label className="wide-field">Consumo informado por GPS (litros)<input name="gpsConsumedLiters" type="number" min="0.01" step="0.01" defaultValue={editingTrip?.gpsConsumedLiters} placeholder="Ej.: 219,9"/></label> : <><label>Nivel inicial del tanque (litros)<input name="fuelInitialLevel" type="number" min="0" step="0.01" defaultValue={editingTrip?.fuelInitialLevel} placeholder="Ej.: 426,5"/></label><label>Nivel final del tanque (litros)<input name="fuelFinalLevel" type="number" min="0" step="0.01" defaultValue={editingTrip?.fuelFinalLevel} placeholder="Ej.: 633,8"/></label></>}<label className="wide-field">Consumo en ralentí (litros)<input name="idleConsumedLiters" type="number" min="0" step="0.01" defaultValue={editingTrip?.idleConsumedLiters} placeholder="Ej.: 6,7"/><small>Parte del consumo total utilizada con el vehículo detenido.</small></label><label className="check-field wide-field"><input name="fuelDataValidated" type="checkbox" defaultChecked={editingTrip?.fuelDataValidated}/><span>Datos de combustible verificados con el GPS</span></label></>}
+          <div className="trip-form-section-title wide-field"><span>03</span><div><small>CONTROL</small><strong>Combustible</strong></div></div>
+          {selectedFuelCalculationMethod !== "Hodómetro / tanque lleno" && <><div className="odometer-alert wide-field"><strong>Consumo de combustible del viaje</strong><span>Método configurado para {vehicleDraft}: {selectedFuelCalculationMethod}. Estos datos alimentarán automáticamente los ciclos, informes y bonificaciones.</span></div>{selectedFuelCalculationMethod === "GPS / consumo informado" ? <label className="wide-field">Consumo informado por GPS (litros)<input name="gpsConsumedLiters" type="number" min="0.01" step="0.01" defaultValue={editingTrip?.gpsConsumedLiters} placeholder="Ej.: 219,9"/></label> : <><label>Nivel inicial del tanque (litros)<input name="fuelInitialLevel" type="number" min="0" step="0.01" value={tripFuelInitialDraft || ""} onChange={(event) => setTripFuelInitialDraft(Number(event.target.value))} placeholder="Ej.: 426,5"/></label><label>Nivel final del tanque (litros)<input name="fuelFinalLevel" type="number" min="0" step="0.01" value={tripFuelFinalDraft || ""} onChange={(event) => setTripFuelFinalDraft(Number(event.target.value))} placeholder="Ej.: 633,8"/></label></>}<label className="wide-field">Consumo en ralentí (litros)<input name="idleConsumedLiters" type="number" min="0" step="0.01" value={tripIdleDraft || ""} onChange={(event) => setTripIdleDraft(Number(event.target.value))} placeholder="Ej.: 6,7"/><small>Parte del consumo total utilizada con el vehículo detenido.</small></label><label className="check-field wide-field"><input name="fuelDataValidated" type="checkbox" defaultChecked={editingTrip?.fuelDataValidated}/><span>Datos de combustible verificados con el GPS</span></label></>}
+          <label>¿Cargó combustible?<select name="tripRefueled" value={tripRefueledDraft ? "Sí" : "No"} onChange={(event) => setTripRefueledDraft(event.target.value === "Sí")}><option>No</option><option>Sí</option></select></label>
+          {tripRefueledDraft && <><label>Litros cargados<input name="tripFuelLiters" type="number" min="0.01" step="0.01" value={tripFuelLitersDraft || ""} onChange={(event) => setTripFuelLitersDraft(Number(event.target.value))} required/></label><label>Precio por litro<input name="tripFuelPrice" type="number" min="1" step="1" value={tripFuelPriceDraft || ""} onChange={(event) => setTripFuelPriceDraft(Number(event.target.value))} required/></label><label>Estación<input name="tripFuelStation" defaultValue={editingTrip ? fuelEntries.find((entry) => entry.tripId === editingTrip.id)?.station : ""} placeholder="Nombre de la estación"/></label><label className="check-field"><input name="tripFuelFullTank" type="checkbox" defaultChecked={editingTrip ? fuelEntries.find((entry) => entry.tripId === editingTrip.id)?.fullTank : false}/><span>Tanque completo</span></label></>}
+          {selectedFuelCalculationMethod === "GPS / balance del tanque" && <div className="trip-fuel-preview wide-field"><span><small>Combustible consumido</small><strong>{number.format(Math.max(0, tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft))} L</strong></span><span><small>Valor de la carga</small><strong>{money.format(tripFuelLitersDraft * tripFuelPriceDraft)}</strong></span><span><small>Ralentí</small><strong>{tripIdleDraft && tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft > 0 ? `${(tripIdleDraft / (tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft) * 100).toFixed(1)}%` : "—"}</strong></span></div>}
           <label>Estado<select name="status" defaultValue={editingTrip?.status ?? "Pendiente"}>{tripStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
         </section>
         <section className="trip-tab-panel" hidden={tripTab !== "orders"}>
