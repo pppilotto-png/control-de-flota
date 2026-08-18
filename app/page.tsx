@@ -24,7 +24,7 @@ type Driver = { id: number; name: string; active: boolean };
 type FuelEntry = { id: number; tripId?: number; date: string; vehicle: string; station: string; liters: number; pricePerLiter: number; totalValue: number; odometer: number; odometerAvailable?: boolean; fullTank: boolean; gpsConsumedLiters?: number; cycleInitialFuelLevel?: number; cycleFinalFuelLevel?: number; consumptionValidated?: boolean } & ImportMetadata;
 type ImportedFuel = Omit<FuelEntry, "id"> & { row: number; error?: string };
 type FuelDistanceMethod = "Odómetro" | "GPS / distancia alternativa";
-type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; startDate?: string; endDate?: string; distanceMethod?: FuelDistanceMethod; distance: number; cost: number; liters: number; consumedLiters: number; consumptionMethod: FuelCalculationMethod; consumptionValidated: boolean; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
+type FuelCycle = { id: string; vehicle: string; startOdometer: number; endOdometer: number; startDate?: string; endDate?: string; distanceMethod?: FuelDistanceMethod; distance: number; cost: number; liters: number; availableLiters: number; consumedLiters: number; consumptionMethod: FuelCalculationMethod; consumptionValidated: boolean; entryIds: number[]; allocations: { tripId: number; km: number; value: number }[] };
 type FuelOpenCycle = { vehicle: string; startOdometer: number; startDate?: string; distanceMethod?: FuelDistanceMethod; entries: FuelEntry[] };
 type MaintenanceType = "Preventivo" | "Correctivo" | "Neumáticos" | "Documentación" | "Otros";
 type Maintenance = { id: number; vehicle: string; date: string; type: MaintenanceType; description: string; km: number; value: number; nextDate?: string; nextKm?: number };
@@ -94,7 +94,7 @@ function calculateFuelCycles(entries: FuelEntry[], trips: Trip[], vehicles: Vehi
         const km = Math.max(0, Math.min(trip.kmFinal, end.odometer) - Math.max(trip.kmInitial, start.odometer));
         return { tripId: trip.id, km, value: Math.round(cost * km / distance) };
       }).filter((allocation) => allocation.km > 0);
-      cycles.push({ id: `${vehicle}-${start.odometer}-${end.odometer}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "Odómetro", distance, cost, liters, consumedLiters: liters, consumptionMethod: "Hodómetro / tanque lleno", consumptionValidated: true, entryIds: cycleEntries.map((entry) => entry.id), allocations });
+      cycles.push({ id: `${vehicle}-${start.odometer}-${end.odometer}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "Odómetro", distance, cost, liters, availableLiters: liters, consumedLiters: liters, consumptionMethod: "Hodómetro / tanque lleno", consumptionValidated: true, entryIds: cycleEntries.map((entry) => entry.id), allocations });
     }
     if (fullIndexes.length) {
       const lastFullIndex = fullIndexes.at(-1)!;
@@ -114,7 +114,8 @@ function calculateFuelCycles(entries: FuelEntry[], trips: Trip[], vehicles: Vehi
       const firstTrip = cycleTrips[0];
       const lastTrip = cycleTrips.at(-1);
       const reportedConsumption = cycleTrips.reduce((sum, trip) => sum + Number(trip.gpsConsumedLiters || 0), 0);
-      const balancedConsumption = Number(firstTrip?.fuelInitialLevel || 0) + liters - Number(lastTrip?.fuelFinalLevel || 0);
+      const availableLiters = Number(firstTrip?.fuelInitialLevel || 0) + liters;
+      const balancedConsumption = availableLiters - Number(lastTrip?.fuelFinalLevel || 0);
       const consumedLiters = calculationMethod === "GPS / consumo informado" ? reportedConsumption : calculationMethod === "GPS / balance del tanque" ? balancedConsumption : liters;
       const hasRequiredFuelData = calculationMethod === "GPS / consumo informado" ? cycleTrips.length > 0 && cycleTrips.every((trip) => trip.fuelDataValidated && Number(trip.gpsConsumedLiters || 0) > 0) : calculationMethod === "GPS / balance del tanque" ? Boolean(firstTrip?.fuelDataValidated && lastTrip?.fuelDataValidated && firstTrip?.fuelInitialLevel !== undefined && lastTrip?.fuelFinalLevel !== undefined) : true;
       const consumptionValidated = hasRequiredFuelData && consumedLiters > 0;
@@ -122,7 +123,7 @@ function calculateFuelCycles(entries: FuelEntry[], trips: Trip[], vehicles: Vehi
         const km = tripDistance(trip);
         return { tripId: trip.id, km, value: Math.round(cost * km / distance) };
       }).filter((allocation) => allocation.km > 0) : [];
-      cycles.push({ id: `${vehicle}-alternative-${start.id}-${end.id}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "GPS / distancia alternativa", distance, cost, liters, consumedLiters: consumedLiters > 0 ? consumedLiters : 0, consumptionMethod: calculationMethod, consumptionValidated, entryIds: cycleEntries.map((entry) => entry.id), allocations });
+      cycles.push({ id: `${vehicle}-alternative-${start.id}-${end.id}`, vehicle, startOdometer: start.odometer, endOdometer: end.odometer, startDate: start.date, endDate: end.date, distanceMethod: "GPS / distancia alternativa", distance, cost, liters, availableLiters: availableLiters > 0 ? availableLiters : liters, consumedLiters: consumedLiters > 0 ? consumedLiters : 0, consumptionMethod: calculationMethod, consumptionValidated, entryIds: cycleEntries.map((entry) => entry.id), allocations });
     }
     if (alternativeFullIndexes.length) {
       const lastFullIndex = alternativeFullIndexes.at(-1)!;
@@ -840,8 +841,12 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
       </section>
 
       <section className="report-section"><div className="report-section-title"><span>04</span><div><small>COMBUSTIBLE</small><h2>Prorrateo por ciclos</h2></div><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin ciclo cerrado"}</strong></div>
-        <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Promedio</th><th>Km asignados</th><th>Participación</th><th>Valor asignado</th></tr></thead><tbody>
-          {allocations.length ? allocations.map(({ cycle, allocation }) => <tr key={`${cycle.id}-${allocation.tripId}`}><td>{cycle.distanceMethod === "GPS / distancia alternativa" ? `${cycle.startDate ?? "—"} → ${cycle.endDate ?? "—"}` : `${number.format(cycle.startOdometer)} → ${number.format(cycle.endOdometer)}`}</td><td>{cycle.vehicle}</td><td>{number.format(cycle.distance)} km</td><td><strong>{cycle.consumptionValidated && cycle.consumedLiters > 0 ? `${(cycle.distance / cycle.consumedLiters).toFixed(2)} km/L` : "Pendiente de validación"}</strong><small>{cycle.consumptionMethod}</small></td><td>{number.format(allocation.km)} km</td><td>{(allocation.km / cycle.distance * 100).toFixed(1)}%</td><td><strong>{money.format(allocation.value)}</strong></td></tr>) : <tr><td colSpan={7}>Ciclo abierto o sin combustible asignado definitivamente.</td></tr>}
+        <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Promedio</th><th>Km asignados</th><th>Combustible consumido</th><th>% consumido</th><th>Valor asignado</th></tr></thead><tbody>
+          {allocations.length ? allocations.map(({ cycle, allocation }) => {
+            const consumedForTrip = cycle.consumptionValidated && cycle.distance > 0 ? cycle.consumedLiters * allocation.km / cycle.distance : 0;
+            const consumedPercentage = cycle.availableLiters > 0 ? consumedForTrip / cycle.availableLiters * 100 : 0;
+            return <tr key={`${cycle.id}-${allocation.tripId}`}><td>{cycle.distanceMethod === "GPS / distancia alternativa" ? `${cycle.startDate ?? "—"} → ${cycle.endDate ?? "—"}` : `${number.format(cycle.startOdometer)} → ${number.format(cycle.endOdometer)}`}</td><td>{cycle.vehicle}</td><td>{number.format(cycle.distance)} km</td><td><strong>{cycle.consumptionValidated && cycle.consumedLiters > 0 ? `${(cycle.distance / cycle.consumedLiters).toFixed(2)} km/L` : "Pendiente de validación"}</strong><small>{cycle.consumptionMethod}</small></td><td>{number.format(allocation.km)} km</td><td><strong>{consumedForTrip > 0 ? `${number.format(Number(consumedForTrip.toFixed(1)))} L` : "Pendiente"}</strong><small>{cycle.availableLiters > 0 ? `de ${number.format(Number(cycle.availableLiters.toFixed(1)))} L disponibles` : "Sin saldo disponible"}</small></td><td><strong>{consumedForTrip > 0 && cycle.availableLiters > 0 ? `${consumedPercentage.toFixed(1)}%` : "—"}</strong></td><td><strong>{money.format(allocation.value)}</strong></td></tr>;
+          }) : <tr><td colSpan={8}>Ciclo abierto o sin combustible asignado definitivamente.</td></tr>}
         </tbody></table></div>
       </section>
 
