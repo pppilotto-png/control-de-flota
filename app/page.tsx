@@ -647,7 +647,15 @@ export default function Home() {
             <span><strong>{serviceRequests.filter((item) => item.status === "Nuevo").length}</strong><small>Chamados nuevos</small></span>
           </div>
           <div className="alert-list">
-            {operationalAlerts.length === 0 ? <div className="alerts-empty">✓ No hay alertas pendientes. La operación está al día.</div> : operationalAlerts.slice(0, 8).map((item) => <button key={item.id} className={`alert-row ${item.level}`} onClick={() => setActive(item.module)}>
+            {operationalAlerts.length === 0 ? <div className="alerts-empty">✓ No hay alertas pendientes. La operación está al día.</div> : operationalAlerts.slice(0, 8).map((item) => <button key={item.id} className={`alert-row ${item.level}`} onClick={() => {
+              if (item.module === "documents") {
+                setFleetTab("documents");
+                setActive("fleet");
+                return;
+              }
+              if (item.module === "fleet") setFleetTab("vehicles");
+              setActive(item.module);
+            }}>
               <span className="alert-indicator">{item.level === "overdue" ? "!" : "⌛"}</span>
               <span><small>{item.category}</small><strong>{item.title}</strong><em>{item.detail}</em></span>
               <b>Ver →</b>
