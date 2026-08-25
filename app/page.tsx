@@ -217,6 +217,7 @@ export default function Home() {
       })
       .then(({ state }) => {
         if (!activeRequest) return;
+        if (!state) throw new Error("La base de datos no devolvió ningún estado. El guardado fue bloqueado para proteger los datos.");
         if (state) {
           setTrips(state.trips ?? initialTrips);
           setTripCosts(state.tripCosts ?? initialCosts);
@@ -259,9 +260,9 @@ export default function Home() {
       })
       .catch(() => {
         if (!activeRequest) return;
-        setDataReady(true);
+        setDataReady(false);
         setSaveStatus("error");
-        setToast("No se pudo conectar con la base de datos. Verifique la conexión.");
+        setToast("No se pudo cargar la base de datos. El guardado automático está bloqueado para proteger sus datos.");
       });
     return () => { activeRequest = false; };
   }, []);
