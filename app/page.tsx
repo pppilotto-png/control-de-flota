@@ -71,6 +71,14 @@ const invoiceTotal = (trip: Trip) => trip.orders.reduce((sum, order) => sum + or
 const freightValue = (trip: Trip, rates: FreightRates) => Math.round(trip.orders.reduce((sum, order) => sum + order.amount * rates[order.freightType] / 100, 0));
 const tripDistance = (trip: Trip) => trip.distanceSource && trip.distanceSource !== "Odómetro" ? Math.max(0, trip.estimatedKm ?? 0) : Math.max(0, trip.kmFinal - trip.kmInitial);
 const isEstimatedTrip = (trip: Trip) => Boolean(trip.distanceSource && trip.distanceSource !== "Odómetro");
+const tripConsumedFuel = (trip: Trip, entries: FuelEntry[]) => {
+  if (!trip.fuelDataValidated) return 0;
+  const reported = Number(trip.gpsConsumedLiters || 0);
+  if (reported > 0) return reported;
+  if (trip.fuelInitialLevel === undefined || trip.fuelFinalLevel === undefined) return 0;
+  const refueled = entries.filter((entry) => entry.tripId === trip.id).reduce((sum, entry) => sum + entry.liters, 0);
+  return Math.max(0, trip.fuelInitialLevel + refueled - trip.fuelFinalLevel);
+};
 
 const calculationMethodFor = (vehicle?: Vehicle): FuelCalculationMethod => vehicle?.fuelCalculationMethod ?? (vehicle?.odometerStatus === "Averiado" ? "GPS / balance del tanque" : "Hodómetro / tanque lleno");
 
@@ -474,11 +482,11 @@ export default function Home() {
       return;
     }
     if (distanceSource !== "Odómetro" && (!saved.estimatedKm || saved.estimatedKm <= 0)) { setTripTab("data"); setTripFormError("Informe el kilometraje estimado del viaje."); return; }
-    if (saved.gpsConsumedLiters && saved.idleConsumedLiters && saved.idleConsumedLiters > saved.gpsConsumedLiters) { setTripTab("data"); setTripFormError("El consumo en ralentí no puede superar el consumo total informado por el GPS."); return; }
+    if (saved.gpsConsumedLiters && saved.idleConsumedLiters && saved.idleConsumedLiters > saved.gpsConsumedLiters) { setTripTab("data"); setTripFormError("El consumo en ralentí no puede superar el consumo total del viaje."); return; }
     const tripFuelMethod = calculationMethodFor(vehicles.find((vehicle) => vehicle.plate === saved.vehicle));
-    if (saved.status === "Finalizado" && tripFuelMethod !== "Hodómetro / tanque lleno") {
-      const missingFuelData = tripFuelMethod === "GPS / consumo informado" ? !saved.gpsConsumedLiters : saved.fuelInitialLevel === undefined || saved.fuelFinalLevel === undefined;
-      if (missingFuelData || !saved.fuelDataValidated) { setTripTab("data"); setTripFormError("Complete y valide los datos de combustible del GPS antes de finalizar el viaje."); return; }
+    if (saved.status === "Finalizado") {
+      const missingFuelData = tripFuelMethod === "GPS / balance del tanque" ? saved.fuelInitialLevel === undefined || saved.fuelFinalLevel === undefined : !saved.gpsConsumedLiters;
+      if (missingFuelData || !saved.fuelDataValidated) { setTripTab("data"); setTripFormError("Complete y valide el consumo real de combustible antes de finalizar el viaje."); return; }
     }
     const tripRefueled = form.get("tripRefueled") === "Sí";
     const tripFuelLiters = Number(form.get("tripFuelLiters") || 0);
@@ -542,7 +550,7 @@ export default function Home() {
       setTimeout(() => setToast(""), 4200);
       return;
     }
-    if (gpsConsumedLiters && idleConsumedLiters && idleConsumedLiters > gpsConsumedLiters) { setToast("El consumo en ralentí no puede superar el consumo total informado por el GPS."); setTimeout(() => setToast(""), 4200); return; }
+    if (gpsConsumedLiters && idleConsumedLiters && idleConsumedLiters > gpsConsumedLiters) { setToast("El consumo en ralentí no puede superar el consumo total del viaje."); setTimeout(() => setToast(""), 4200); return; }
     setTrips(trips.map((trip) => trip.id === finishingTrip.id ? { ...trip, endDate, kmFinal: distanceSource === "Odómetro" ? kmFinal : trip.kmFinal, distanceSource, estimatedKm: distanceSource === "Odómetro" ? undefined : estimatedKm, kmValidated: distanceSource === "Odómetro" ? undefined : form.get("kmValidated") === "on", validatedBy: distanceSource === "Odómetro" ? undefined : String(form.get("validatedBy") || "") || undefined, gpsConsumedLiters, idleConsumedLiters, fuelInitialLevel: form.get("fuelInitialLevel") !== null && String(form.get("fuelInitialLevel")) !== "" ? Number(form.get("fuelInitialLevel")) : trip.fuelInitialLevel, fuelFinalLevel: form.get("fuelFinalLevel") !== null && String(form.get("fuelFinalLevel")) !== "" ? Number(form.get("fuelFinalLevel")) : trip.fuelFinalLevel, fuelDataValidated: form.get("fuelDataValidated") === "on", status: "Finalizado" } : trip));
     setToast(`Viaje N.º ${finishingTrip.id} finalizado correctamente.`); setFinishingTrip(null);
     setTimeout(() => setToast(""), 3600);
@@ -687,7 +695,8 @@ export default function Home() {
           {!selectedOdometerBroken && <><label>Km inicial<input name="kmInitial" type="number" min="0" placeholder="0" value={kmInitialDraft || ""} onChange={(event) => setKmInitialDraft(Number(event.target.value))} required/></label><label>Km final<input name="kmFinal" type="number" min={kmInitialDraft} placeholder="Opcional al iniciar" value={kmFinalDraft || ""} onChange={(event) => setKmFinalDraft(Number(event.target.value))}/></label><label>Total recorrido<input value={kmFinalDraft >= kmInitialDraft && kmFinalDraft > 0 ? kmFinalDraft - kmInitialDraft : 0} readOnly aria-label="Total de kilómetros recorridos calculado automáticamente"/></label></>}
           {selectedOdometerBroken && <><input type="hidden" name="kmInitial" value={selectedVehicleProfile?.lastValidOdometer ?? selectedVehicleProfile?.currentKm ?? 0}/><input type="hidden" name="kmFinal" value="0"/><label>Kilometraje estimado<input name="estimatedKm" type="number" min="1" step="1" defaultValue={editingTrip?.estimatedKm} required/></label><label>Validado por<input name="validatedBy" defaultValue={editingTrip?.validatedBy} placeholder="Nombre del responsable"/></label><label className="check-field"><input name="kmValidated" type="checkbox" defaultChecked={editingTrip?.kmValidated}/><span>Distancia revisada y aprobada</span></label></>}
           <div className="trip-form-section-title wide-field"><span>03</span><div><small>CONTROL</small><strong>Combustible</strong></div></div>
-          {selectedFuelCalculationMethod !== "Hodómetro / tanque lleno" && <>{selectedFuelCalculationMethod === "GPS / consumo informado" ? <label className="wide-field">Consumo total de combustible (litros)<input name="gpsConsumedLiters" type="number" min="0.01" step="0.01" defaultValue={editingTrip?.gpsConsumedLiters} placeholder="Ej.: 219,9"/></label> : <><label>Nivel inicial del tanque (litros)<input name="fuelInitialLevel" type="number" min="0" step="0.01" value={tripFuelInitialDraft || ""} onChange={(event) => setTripFuelInitialDraft(Number(event.target.value))} placeholder="Ej.: 426,5"/></label><label>Nivel final del tanque (litros)<input name="fuelFinalLevel" type="number" min="0" step="0.01" value={tripFuelFinalDraft || ""} onChange={(event) => setTripFuelFinalDraft(Number(event.target.value))} placeholder="Ej.: 633,8"/></label><label>Consumo total de combustible<input value={number.format(Math.max(0, tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft))} readOnly aria-label="Consumo total de combustible calculado"/></label></>}<label className="wide-field">Consumo en ralentí (litros)<input name="idleConsumedLiters" type="number" min="0" step="0.01" value={tripIdleDraft || ""} onChange={(event) => setTripIdleDraft(Number(event.target.value))} placeholder="Ej.: 6,7"/><small>Parte del consumo total utilizada con el vehículo detenido.</small></label><label className="check-field wide-field"><input name="fuelDataValidated" type="checkbox" defaultChecked={editingTrip?.fuelDataValidated}/><span>Datos de combustible verificados con el GPS</span></label></>}
+          {selectedFuelCalculationMethod === "GPS / balance del tanque" ? <><label>Nivel inicial del tanque (litros)<input name="fuelInitialLevel" type="number" min="0" step="0.01" value={tripFuelInitialDraft || ""} onChange={(event) => setTripFuelInitialDraft(Number(event.target.value))} placeholder="Ej.: 426,5"/></label><label>Nivel final del tanque (litros)<input name="fuelFinalLevel" type="number" min="0" step="0.01" value={tripFuelFinalDraft || ""} onChange={(event) => setTripFuelFinalDraft(Number(event.target.value))} placeholder="Ej.: 633,8"/></label><label>Consumo total de combustible<input value={number.format(Math.max(0, tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft))} readOnly aria-label="Consumo total de combustible calculado"/></label></> : <label className="wide-field">Consumo total de combustible gastado (litros)<input name="gpsConsumedLiters" type="number" min="0.01" step="0.01" defaultValue={editingTrip?.gpsConsumedLiters} placeholder="Ej.: 32,5"/><small>Litros realmente consumidos para recorrer la distancia de este viaje; no son los litros cargados.</small></label>}
+          <label className="wide-field">Consumo en ralentí (litros)<input name="idleConsumedLiters" type="number" min="0" step="0.01" value={tripIdleDraft || ""} onChange={(event) => setTripIdleDraft(Number(event.target.value))} placeholder="Ej.: 6,7"/><small>Parte del consumo total utilizada con el vehículo detenido.</small></label><label className="check-field wide-field"><input name="fuelDataValidated" type="checkbox" defaultChecked={editingTrip?.fuelDataValidated}/><span>Consumo real revisado y confirmado</span></label>
           <label>¿Cargó combustible?<select name="tripRefueled" value={tripRefueledDraft ? "Sí" : "No"} onChange={(event) => setTripRefueledDraft(event.target.value === "Sí")}><option>No</option><option>Sí</option></select></label>
           {tripRefueledDraft && <><label>Litros cargados<input name="tripFuelLiters" type="number" min="0.01" step="0.01" value={tripFuelLitersDraft || ""} onChange={(event) => setTripFuelLitersDraft(Number(event.target.value))} required/></label><label>Precio por litro<input name="tripFuelPrice" type="number" min="1" step="1" value={tripFuelPriceDraft || ""} onChange={(event) => setTripFuelPriceDraft(Number(event.target.value))} required/></label><label>Estación<input name="tripFuelStation" defaultValue={editingTrip ? fuelEntries.find((entry) => entry.tripId === editingTrip.id)?.station : ""} placeholder="Nombre de la estación"/></label><label className="check-field"><input name="tripFuelFullTank" type="checkbox" defaultChecked={editingTrip ? fuelEntries.find((entry) => entry.tripId === editingTrip.id)?.fullTank : false}/><span>Tanque completo</span></label></>}
           {selectedFuelCalculationMethod === "GPS / balance del tanque" && <div className="trip-fuel-preview wide-field"><span><small>Consumo total</small><strong>{number.format(Math.max(0, tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft))} L</strong></span><span><small>Valor de la carga</small><strong>{money.format(tripFuelLitersDraft * tripFuelPriceDraft)}</strong></span><span><small>Ralentí</small><strong>{tripIdleDraft && tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft > 0 ? `${(tripIdleDraft / (tripFuelInitialDraft + tripFuelLitersDraft - tripFuelFinalDraft) * 100).toFixed(1)}%` : "—"}</strong></span></div>}
@@ -714,7 +723,7 @@ export default function Home() {
     </div></div>}
     {finishingTrip && <div className="modal-backdrop" onMouseDown={() => setFinishingTrip(null)}><div className="modal finish-modal" role="dialog" aria-modal="true" aria-labelledby="finish-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => setFinishingTrip(null)} aria-label="Cerrar">×</button><p className="eyebrow">Cierre de operación</p><h2 id="finish-title">Finalizar viaje N.º {finishingTrip.id}</h2><p className="modal-intro">Informe la fecha y el kilometraje final para cerrar el viaje.</p>
-      <form onSubmit={finishTrip}><label>Fecha final<input name="endDate" type="date" defaultValue={today} min={finishingTrip.startDate} required/></label>{finishingOdometerBroken ? <><div className="odometer-alert wide-field"><strong>⚠ Odómetro averiado</strong><span>Use una distancia obtenida por GPS, ruta o medición manual.</span></div><label>Origen del kilometraje<select name="distanceSource" defaultValue={finishingTrip.distanceSource ?? "GPS"}><option>GPS</option><option>Ruta</option><option>Manual</option></select></label><label>Kilometraje estimado<input name="estimatedKm" type="number" min="1" step="1" defaultValue={finishingTrip.estimatedKm} required/></label><label>Validado por<input name="validatedBy" defaultValue={finishingTrip.validatedBy} placeholder="Nombre del responsable"/></label><label className="check-field"><input name="kmValidated" type="checkbox" defaultChecked={finishingTrip.kmValidated}/><span>Distancia revisada y aprobada</span></label><input type="hidden" name="kmFinal" value={finishingTrip.kmFinal}/></> : <><input type="hidden" name="distanceSource" value="Odómetro"/><label>Km final<input name="kmFinal" type="number" min={finishingTrip.kmInitial} defaultValue={finishingTrip.kmFinal || undefined} required/></label></>}{finishingFuelCalculationMethod !== "Hodómetro / tanque lleno" && <><div className="odometer-alert wide-field"><strong>Consumo de combustible</strong><span>{finishingFuelCalculationMethod}. Registre y valide los datos del GPS antes de finalizar.</span></div>{finishingFuelCalculationMethod === "GPS / consumo informado" ? <label className="wide-field">Consumo informado por GPS (litros)<input name="gpsConsumedLiters" type="number" min="0.01" step="0.01" defaultValue={finishingTrip.gpsConsumedLiters} placeholder="Ej.: 219,9" required/></label> : <><label>Nivel inicial del tanque (litros)<input name="fuelInitialLevel" type="number" min="0" step="0.01" defaultValue={finishingTrip.fuelInitialLevel} placeholder="Ej.: 426,5" required/></label><label>Nivel final del tanque (litros)<input name="fuelFinalLevel" type="number" min="0" step="0.01" defaultValue={finishingTrip.fuelFinalLevel} placeholder="Ej.: 633,8" required/></label></>}<label className="wide-field">Consumo en ralentí (litros)<input name="idleConsumedLiters" type="number" min="0" step="0.01" defaultValue={finishingTrip.idleConsumedLiters} placeholder="Ej.: 6,7"/><small>Incluido dentro del consumo total del GPS.</small></label><label className="check-field wide-field"><input name="fuelDataValidated" type="checkbox" defaultChecked={finishingTrip.fuelDataValidated} required/><span>Datos de combustible verificados con el GPS</span></label></>}<div className="finish-summary"><span>{finishingOdometerBroken ? "Última lectura válida" : "Km inicial"}<strong>{number.format(finishingOdometerBroken ? finishingVehicleProfile?.lastValidOdometer ?? finishingTrip.kmInitial : finishingTrip.kmInitial)}</strong></span><span>Flete calculado<strong>{money.format(freightValue(finishingTrip, freightRates))}</strong></span></div><div className="form-actions"><button type="button" className="secondary" onClick={() => setFinishingTrip(null)}>Cancelar</button><button className="primary" type="submit">Finalizar viaje</button></div></form>
+      <form onSubmit={finishTrip}><label>Fecha final<input name="endDate" type="date" defaultValue={today} min={finishingTrip.startDate} required/></label>{finishingOdometerBroken ? <><div className="odometer-alert wide-field"><strong>⚠ Odómetro averiado</strong><span>Use una distancia obtenida por GPS, ruta o medición manual.</span></div><label>Origen del kilometraje<select name="distanceSource" defaultValue={finishingTrip.distanceSource ?? "GPS"}><option>GPS</option><option>Ruta</option><option>Manual</option></select></label><label>Kilometraje estimado<input name="estimatedKm" type="number" min="1" step="1" defaultValue={finishingTrip.estimatedKm} required/></label><label>Validado por<input name="validatedBy" defaultValue={finishingTrip.validatedBy} placeholder="Nombre del responsable"/></label><label className="check-field"><input name="kmValidated" type="checkbox" defaultChecked={finishingTrip.kmValidated}/><span>Distancia revisada y aprobada</span></label><input type="hidden" name="kmFinal" value={finishingTrip.kmFinal}/></> : <><input type="hidden" name="distanceSource" value="Odómetro"/><label>Km final<input name="kmFinal" type="number" min={finishingTrip.kmInitial} defaultValue={finishingTrip.kmFinal || undefined} required/></label></>}<div className="odometer-alert wide-field"><strong>Consumo real de combustible</strong><span>Informe los litros efectivamente gastados para recorrer este viaje. La carga se utilizará únicamente para calcular el costo.</span></div>{finishingFuelCalculationMethod === "GPS / balance del tanque" ? <><label>Nivel inicial del tanque (litros)<input name="fuelInitialLevel" type="number" min="0" step="0.01" defaultValue={finishingTrip.fuelInitialLevel} placeholder="Ej.: 426,5" required/></label><label>Nivel final del tanque (litros)<input name="fuelFinalLevel" type="number" min="0" step="0.01" defaultValue={finishingTrip.fuelFinalLevel} placeholder="Ej.: 633,8" required/></label></> : <label className="wide-field">Consumo total gastado (litros)<input name="gpsConsumedLiters" type="number" min="0.01" step="0.01" defaultValue={finishingTrip.gpsConsumedLiters} placeholder="Ej.: 32,5" required/></label>}<label className="wide-field">Consumo en ralentí (litros)<input name="idleConsumedLiters" type="number" min="0" step="0.01" defaultValue={finishingTrip.idleConsumedLiters} placeholder="Ej.: 6,7"/><small>Incluido dentro del consumo total del viaje.</small></label><label className="check-field wide-field"><input name="fuelDataValidated" type="checkbox" defaultChecked={finishingTrip.fuelDataValidated} required/><span>Consumo real revisado y confirmado</span></label><div className="finish-summary"><span>{finishingOdometerBroken ? "Última lectura válida" : "Km inicial"}<strong>{number.format(finishingOdometerBroken ? finishingVehicleProfile?.lastValidOdometer ?? finishingTrip.kmInitial : finishingTrip.kmInitial)}</strong></span><span>Flete calculado<strong>{money.format(freightValue(finishingTrip, freightRates))}</strong></span></div><div className="form-actions"><button type="button" className="secondary" onClick={() => setFinishingTrip(null)}>Cancelar</button><button className="primary" type="submit">Finalizar viaje</button></div></form>
     </div></div>}
     {costModal && <div className="modal-backdrop" onMouseDown={() => { setCostModal(false); setEditingCost(null); }}><div className="modal cost-modal" role="dialog" aria-modal="true" aria-labelledby="cost-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setCostModal(false); setEditingCost(null); }} aria-label="Cerrar">×</button><p className="eyebrow">Control de gastos</p><h2 id="cost-title">{editingCost ? "Editar costo" : "Nuevo costo"}</h2><p className="modal-intro">Vincule el gasto a un viaje. El total se calcula por cantidad y valor unitario.</p>
@@ -742,7 +751,7 @@ export default function Home() {
         <div className="form-actions"><button type="button" className="secondary" onClick={() => { setFuelModal(false); setEditingFuel(null); }}>Cancelar</button><button className="primary" type="submit">{editingFuel ? "Guardar cambios" : "Guardar carga"}</button></div>
       </form>
     </div></div>}
-    {reportTrip && <TripReport trip={reportTrip} rates={freightRates} costs={tripCosts.filter((cost) => cost.tripId === reportTrip.id)} fuelCycles={fuelCycles.cycles} fuelValue={fuelCycles.allocationByTrip.get(reportTrip.id) ?? 0} onClose={() => setReportTrip(null)}/>}
+    {reportTrip && <TripReport trip={reportTrip} rates={freightRates} costs={tripCosts.filter((cost) => cost.tripId === reportTrip.id)} fuelCycles={fuelCycles.cycles} fuelEntries={fuelEntries} fuelValue={fuelCycles.allocationByTrip.get(reportTrip.id) ?? 0} onClose={() => setReportTrip(null)}/>}
     {toast && <div className="toast">✓ {toast}</div>}
   </main>;
 }
@@ -835,11 +844,12 @@ function printStandaloneReport(selector: string, title: string, fallbackMode: st
   }, { once: true });
 }
 
-function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
+function TripReport({ trip, rates, costs, fuelCycles, fuelEntries, fuelValue, onClose }: {
   trip: Trip;
   rates: FreightRates;
   costs: TripCost[];
   fuelCycles: FuelCycle[];
+  fuelEntries: FuelEntry[];
   fuelValue: number;
   onClose: () => void;
 }) {
@@ -851,11 +861,8 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
   const allocations = fuelCycles.flatMap((cycle) => cycle.allocations
     .filter((allocation) => allocation.tripId === trip.id)
     .map((allocation) => ({ cycle, allocation })));
-  const allocatedFuel = allocations.reduce((totals, { cycle, allocation }) => {
-    const liters = cycle.consumptionValidated ? allocation.consumedLiters : 0;
-    return { km: totals.km + allocation.km, liters: totals.liters + liters };
-  }, { km: 0, liters: 0 });
-  const averageFuelConsumption = allocatedFuel.liters > 0 ? allocatedFuel.km / allocatedFuel.liters : 0;
+  const actualConsumedLiters = tripConsumedFuel(trip, fuelEntries);
+  const averageFuelConsumption = actualConsumedLiters > 0 ? km / actualConsumedLiters : 0;
   const formatDate = (value?: string) => value ? new Intl.DateTimeFormat("es-PY").format(new Date(`${value}T12:00:00`)) : "—";
 
   return <div className="trip-report-backdrop" role="dialog" aria-modal="true" aria-label={`Informe del viaje ${trip.id}`}>
@@ -868,7 +875,7 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
           <div><small>Sucursal</small><strong>{trip.branch}</strong></div><div><small>Chapa</small><strong>{trip.vehicle}</strong></div><div><small>Chofer</small><strong>{trip.driver}</strong></div>
           <div><small>Fecha inicial</small><strong>{formatDate(trip.startDate)}</strong></div><div><small>Fecha final</small><strong>{formatDate(trip.endDate)}</strong></div><div><small>Estado</small><strong>{trip.status}</strong></div>
           <div><small>{isEstimatedTrip(trip) ? "Origen del kilometraje" : "Km inicial"}</small><strong>{isEstimatedTrip(trip) ? trip.distanceSource : `${number.format(trip.kmInitial)} km`}</strong></div><div><small>{isEstimatedTrip(trip) ? "Validación" : "Km final"}</small><strong>{isEstimatedTrip(trip) ? (trip.kmValidated ? `Validado${trip.validatedBy ? ` por ${trip.validatedBy}` : ""}` : "Pendiente de validación") : (trip.kmFinal ? `${number.format(trip.kmFinal)} km` : "—")}</strong></div><div><small>Total recorrido</small><strong>{km ? `${number.format(km)} km${isEstimatedTrip(trip) ? " (estimado)" : ""}` : "Pendiente"}</strong></div>
-          {isEstimatedTrip(trip) && <><div><small>Nivel inicial del tanque</small><strong>{trip.fuelInitialLevel !== undefined ? `${number.format(trip.fuelInitialLevel)} L` : "—"}</strong></div><div><small>Nivel final del tanque</small><strong>{trip.fuelFinalLevel !== undefined ? `${number.format(trip.fuelFinalLevel)} L` : "—"}</strong></div><div><small>Consumo informado por GPS</small><strong>{trip.gpsConsumedLiters ? `${number.format(trip.gpsConsumedLiters)} L` : trip.fuelDataValidated ? "Calculado por balance" : "Pendiente de validación"}</strong></div><div><small>Consumo en ralentí</small><strong>{trip.idleConsumedLiters ? `${number.format(trip.idleConsumedLiters)} L` : "—"}</strong><small>{trip.idleConsumedLiters && allocatedFuel.liters > 0 ? `${(trip.idleConsumedLiters / allocatedFuel.liters * 100).toFixed(1)}% del consumo del viaje` : "Vehículo detenido"}</small></div></>}
+          {trip.fuelDataValidated && <><div><small>Nivel inicial del tanque</small><strong>{trip.fuelInitialLevel !== undefined ? `${number.format(trip.fuelInitialLevel)} L` : "—"}</strong></div><div><small>Nivel final del tanque</small><strong>{trip.fuelFinalLevel !== undefined ? `${number.format(trip.fuelFinalLevel)} L` : "—"}</strong></div><div><small>Combustible realmente consumido</small><strong>{actualConsumedLiters > 0 ? `${number.format(actualConsumedLiters)} L` : "Pendiente de validación"}</strong></div><div><small>Consumo en ralentí</small><strong>{trip.idleConsumedLiters ? `${number.format(trip.idleConsumedLiters)} L` : "—"}</strong><small>{trip.idleConsumedLiters && actualConsumedLiters > 0 ? `${(trip.idleConsumedLiters / actualConsumedLiters * 100).toFixed(1)}% del consumo del viaje` : "Vehículo detenido"}</small></div></>}
         </div>
       </section>
 
@@ -895,7 +902,7 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelValue, onClose }: {
       </section>
 
       <section className="report-section report-result-section"><div className="report-section-title"><span>05</span><div><small>CIERRE</small><h2>Resultado financiero</h2></div></div>
-        <div className="report-result-grid"><div><small>Flete total</small><strong>{money.format(freight)}</strong></div><div><small>Costos operativos</small><strong>{money.format(totalCosts)}</strong></div><div><small>Combustible</small><strong>{money.format(fuelValue)}</strong></div><div><small>Promedio de combustible</small><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin ciclo cerrado"}</strong></div><div className={result >= 0 ? "report-profit" : "report-loss"}><small>Ganancia / Pérdida</small><strong>{money.format(result)}</strong></div><div><small>Margen</small><strong>{margin.toFixed(1)}%</strong></div><div><small>Costo por km</small><strong>{km ? money.format((totalCosts + fuelValue) / km) : "—"}</strong></div></div>
+        <div className="report-result-grid"><div><small>Flete total</small><strong>{money.format(freight)}</strong></div><div><small>Costos operativos</small><strong>{money.format(totalCosts)}</strong></div><div><small>Combustible</small><strong>{money.format(fuelValue)}</strong></div><div><small>Combustible consumido</small><strong>{actualConsumedLiters > 0 ? `${number.format(actualConsumedLiters)} L` : "Sin consumo validado"}</strong></div><div><small>Promedio de combustible</small><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></div><div className={result >= 0 ? "report-profit" : "report-loss"}><small>Ganancia / Pérdida</small><strong>{money.format(result)}</strong></div><div><small>Margen</small><strong>{margin.toFixed(1)}%</strong></div><div><small>Costo por km</small><strong>{km ? money.format((totalCosts + fuelValue) / km) : "—"}</strong></div></div>
       </section>
       <footer className="report-footer"><span>FreteControl ERP · Informe del viaje N.º {trip.id}</span><span>Valores expresados en guaraníes (PYG)</span></footer>
     </article>
@@ -1279,19 +1286,25 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
       const national = driverTrips.some((trip) => trip.orders.some((order) => order.freightType === "Nacional" || order.freightType === "Remisión"));
       const category: "Local" | "Nacional" = national ? "Nacional" : "Local";
       const vehicleList = Array.from(new Set(driverTrips.map((trip) => trip.vehicle)));
-      const monthCycles = cycles.filter((cycle) => cycle.consumptionValidated && vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) === period);
-      const historicalCycles = cycles.filter((cycle) => cycle.consumptionValidated && vehicleList.includes(cycle.vehicle) && cycleMonth(cycle) < period).sort((a, b) => cycleMonth(b).localeCompare(cycleMonth(a))).slice(0, 3);
-      const totalDistance = monthCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-      const totalLiters = monthCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
-      const historicalDistance = historicalCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
-      const historicalLiters = historicalCycles.reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
-      const consumption = totalLiters > 0 ? totalDistance / totalLiters : 0;
+      const tripsWithDistance = driverTrips.filter((trip) => tripDistance(trip) > 0);
+      const hasCompleteConsumption = tripsWithDistance.length > 0 && tripsWithDistance.every((trip) => tripConsumedFuel(trip, fuelEntries) > 0);
+      const totalDistance = tripsWithDistance.reduce((sum, trip) => sum + tripDistance(trip), 0);
+      const totalLiters = tripsWithDistance.reduce((sum, trip) => sum + tripConsumedFuel(trip, fuelEntries), 0);
+      const consumption = hasCompleteConsumption && totalLiters > 0 ? totalDistance / totalLiters : 0;
+      const periodIndex = Number(period.slice(0, 4)) * 12 + Number(period.slice(5, 7));
+      const historicalTrips = trips.filter((trip) => {
+        const tripPeriod = trip.startDate.slice(0, 7);
+        const tripIndex = Number(tripPeriod.slice(0, 4)) * 12 + Number(tripPeriod.slice(5, 7));
+        return trip.driver === driver && tripIndex < periodIndex && tripIndex >= periodIndex - 3 && tripDistance(trip) > 0 && tripConsumedFuel(trip, fuelEntries) > 0;
+      });
+      const historicalDistance = historicalTrips.reduce((sum, trip) => sum + tripDistance(trip), 0);
+      const historicalLiters = historicalTrips.reduce((sum, trip) => sum + tripConsumedFuel(trip, fuelEntries), 0);
       const previousConsumption = historicalLiters > 0 ? historicalDistance / historicalLiters : 0;
       const targetForVehicle = (plate: string) => vehicles.find((vehicle) => vehicle.plate === plate)?.fuelConsumptionTarget ?? defaultFuelTargets[plate] ?? 0;
-      const weightedTargetCycles = monthCycles.filter((cycle) => targetForVehicle(cycle.vehicle) > 0);
-      const weightedDistance = weightedTargetCycles.reduce((sum, cycle) => sum + cycle.distance, 0);
+      const weightedTargetTrips = tripsWithDistance.filter((trip) => targetForVehicle(trip.vehicle) > 0);
+      const weightedDistance = weightedTargetTrips.reduce((sum, trip) => sum + tripDistance(trip), 0);
       const configuredTargets = vehicleList.map(targetForVehicle).filter((value) => value > 0);
-      const target = weightedDistance > 0 ? weightedTargetCycles.reduce((sum, cycle) => sum + targetForVehicle(cycle.vehicle) * cycle.distance, 0) / weightedDistance : configuredTargets.length ? configuredTargets.reduce((sum, value) => sum + value, 0) / configuredTargets.length : 0;
+      const target = weightedDistance > 0 ? weightedTargetTrips.reduce((sum, trip) => sum + targetForVehicle(trip.vehicle) * tripDistance(trip), 0) / weightedDistance : configuredTargets.length ? configuredTargets.reduce((sum, value) => sum + value, 0) / configuredTargets.length : 0;
       const ratio = target > 0 ? consumption / target : 0;
       const fuelScore = ratio >= 1 ? 1 : ratio >= .95 ? .75 : ratio >= .9 ? .5 : 0;
       const review = reviews.find((item) => item.month === period && item.driver === driver);
@@ -1470,14 +1483,13 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
   const orderCount = rows.reduce((sum, row) => sum + row.matchingOrders.length, 0);
   const totalKm = rows.reduce((sum, row) => sum + row.km, 0);
   const transportedValue = rows.reduce((sum, row) => sum + row.invoiced, 0);
-  const reportTripIds = new Set(rows.map((row) => row.trip.id));
-  const fuelConsumptionTotals = fuelCycles.reduce((totals, cycle) => {
-    if (!cycle.consumptionValidated || cycle.consumedLiters <= 0) return totals;
-    cycle.allocations.forEach((allocation) => {
-      if (!reportTripIds.has(allocation.tripId) || allocation.consumedLiters <= 0) return;
-      totals.distance += allocation.km;
-      totals.liters += allocation.consumedLiters;
-    });
+  const fuelConsumptionTotals = rows.reduce((totals, row) => {
+    const consumedLiters = tripConsumedFuel(row.trip, fuelEntries);
+    const fullDistance = tripDistance(row.trip);
+    if (consumedLiters <= 0 || fullDistance <= 0) return totals;
+    const selectedShare = row.km / fullDistance;
+    totals.distance += row.km;
+    totals.liters += consumedLiters * selectedShare;
     return totals;
   }, { distance: 0, liters: 0 });
   const averageFuelConsumption = fuelConsumptionTotals.liters > 0
@@ -1497,9 +1509,8 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
     return Array.from(map.values()).sort((a, b) => b.orders - a.orders);
   })();
   const operationalRows = rows.map((row) => {
-    const matchingCycles = fuelCycles.map((cycle) => ({ cycle, allocation: cycle.allocations.find((allocation) => allocation.tripId === row.trip.id) })).filter((item) => item.allocation && item.cycle.consumptionValidated && item.cycle.consumedLiters > 0);
-    const cycleKm = matchingCycles.reduce((sum, item) => sum + (item.allocation?.km ?? 0), 0);
-    const consumption = cycleKm > 0 ? matchingCycles.reduce((sum, item) => sum + (item.cycle.distance / item.cycle.consumedLiters) * (item.allocation?.km ?? 0), 0) / cycleKm : 0;
+    const consumedLiters = tripConsumedFuel(row.trip, fuelEntries);
+    const consumption = consumedLiters > 0 ? tripDistance(row.trip) / consumedLiters : 0;
     return { ...row, consumption, capacity: vehicles.find((vehicle) => vehicle.plate === row.trip.vehicle)?.type || "Sin dato" };
   }).sort((a, b) => b.trip.startDate.localeCompare(a.trip.startDate) || b.trip.id - a.trip.id);
   const vehicleGroups = (() => {
