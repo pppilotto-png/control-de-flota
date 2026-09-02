@@ -1223,21 +1223,21 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     </section>
     <article className="bonus-consolidated-report standalone-print-report">
       <header className="bcr-header"><h1>INFORME MENSUAL DE BONIFICACIONES</h1><p>Periodo: {monthLabel}</p></header>
-      <section className="bcr-section"><h2>Choferes</h2><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Criterio</th><th>Resultado</th><th>Bonificación</th><th>Total</th></tr></thead><tbody>
-        {rows.map((row) => <Fragment key={`report-${row.driver}`}>
+      <section className="bcr-section"><h2>Choferes</h2><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Criterio</th><th>Resultado</th><th>Bonificación</th><th>Total</th></tr></thead>
+        {rows.map((row) => <tbody className="bcr-person" key={`report-${row.driver}`}>
           <tr><td rowSpan={3} className="bcr-name">{row.driver}</td><td rowSpan={3}>{row.category}</td><td>Descarga de mercaderías</td><td><span className={row.trips ? "fulfilled" : "not-fulfilled"}>{row.trips ? "Cumplido" : "No cumplido"}</span></td><td>{gs(row.unloadingBonus)}</td><td rowSpan={3} className="bcr-total">{gs(row.total)}</td></tr>
           <tr><td>Sin devolución por averías</td><td><span className={row.reviewed ? "fulfilled" : "not-fulfilled"}>{row.reviewed ? "Cumplido" : "Pendiente"}</span></td><td>{gs(row.damageBonus)}</td></tr>
           <tr><td>Promedio de consumo</td><td><span className={row.score ? "fulfilled" : "not-fulfilled"}>{row.score === 1 ? "Cumplido" : row.score ? `Parcial (${Math.round(row.score * 100)}%)` : "No cumplido"}</span></td><td>{gs(row.fuelBonus)}</td></tr>
-        </Fragment>)}
-        {!rows.length && <tr><td colSpan={6}>No hay choferes evaluados en este periodo.</td></tr>}
-      </tbody></table></section>
-      <section className="bcr-section"><h2>Ayudantes</h2><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Criterio</th><th>Resultado</th><th>Bonificación</th><th>Total</th></tr></thead><tbody>
-        {helperRows.map((row) => <Fragment key={`report-${row.driver}-${row.helper}`}>
+        </tbody>)}
+        {!rows.length && <tbody><tr><td colSpan={6}>No hay choferes evaluados en este periodo.</td></tr></tbody>}
+      </table></section>
+      <section className="bcr-section"><h2>Ayudantes</h2><table><thead><tr><th>Nombre</th><th>Categoría</th><th>Criterio</th><th>Resultado</th><th>Bonificación</th><th>Total</th></tr></thead>
+        {helperRows.map((row) => <tbody className="bcr-person" key={`report-${row.driver}-${row.helper}`}>
           <tr><td rowSpan={2} className="bcr-name">{row.helper}</td><td rowSpan={2}>{row.category}</td><td>Descarga de mercaderías</td><td><span className={row.trips ? "fulfilled" : "not-fulfilled"}>{row.trips ? "Cumplido" : "No cumplido"}</span></td><td>{gs(row.unloadingBonus)}</td><td rowSpan={2} className="bcr-total">{gs(row.total)}</td></tr>
           <tr><td>Sin devolución por averías</td><td><span className={row.reviewed ? "fulfilled" : "not-fulfilled"}>{row.reviewed ? "Cumplido" : "Pendiente"}</span></td><td>{gs(row.damageBonus)}</td></tr>
-        </Fragment>)}
-        {!helperRows.length && <tr><td colSpan={6}>No hay ayudantes evaluados en este periodo.</td></tr>}
-      </tbody></table></section>
+        </tbody>)}
+        {!helperRows.length && <tbody><tr><td colSpan={6}>No hay ayudantes evaluados en este periodo.</td></tr></tbody>}
+      </table></section>
       <section className="bcr-summary"><h2>RESUMEN GENERAL</h2><table><tbody><tr><td>Total choferes</td><td>{gs(driverTotal)}</td></tr><tr><td>Total ayudantes</td><td>{gs(helperTotal)}</td></tr><tr className="grand-total"><td>TOTAL GENERAL</td><td>{gs(driverTotal + helperTotal)}</td></tr></tbody></table></section>
       <footer>FreteControl ERP · Informe mensual de bonificaciones · Valores expresados en guaraníes (PYG)</footer>
     </article>
@@ -1365,7 +1365,7 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
     else setHelperReviews([...helperReviews.filter((item) => !(item.month === month && item.driver === entry.driver && item.helper === entry.name)), { month, driver: entry.driver ?? "", helper: entry.name, noDamageReturns: checked }]);
   };
   return <div className="bonus-module bonus-history-module">
-    <section className="module-head bonus-screen-head"><div><p className="eyebrow">Gestión de desempeño</p><h2>Bonificaciones</h2><p className="muted">Evaluación mensual, histórico preservado y seguimiento de los últimos 3 meses.</p></div><div className="bonus-head-actions"><button className="secondary" onClick={() => printStandaloneReport(".bonus-history-print", `Bonificaciones — ${monthLabel(month)}`, "printing-bonus-consolidated")}><Icon name="report"/>PDF único</button>{!closed && <button className="primary" disabled={readOnly || !monthlyEntries.length} onClick={closeMonth}>Cerrar mes</button>}{closed && <span className="branch-status active">Mes cerrado</span>}</div></section>
+    <section className="module-head bonus-screen-head"><div><p className="eyebrow">Gestión de desempeño</p><h2>Bonificaciones</h2><p className="muted">Evaluación mensual, histórico preservado y seguimiento de los últimos 3 meses.</p></div><div className="bonus-head-actions"><button className="secondary" onClick={() => printStandaloneReport(".bonus-history-print", `Bonificaciones — ${monthLabel(month)}`, "printing-bonus-consolidated", "landscape")}><Icon name="report"/>PDF único</button>{!closed && <button className="primary" disabled={readOnly || !monthlyEntries.length} onClick={closeMonth}>Cerrar mes</button>}{closed && <span className="branch-status active">Mes cerrado</span>}</div></section>
     <div className="report-tabs">{(["monthly", "history", "ranking"] as View[]).map((item) => <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{item === "monthly" ? "Resumen mensual" : item === "history" ? "Histórico" : "Ranking"}</button>)}</div>
     <div className="bonus-history-filters"><label>Mes<select value={month} onChange={(event) => setMonth(event.target.value)}>{availableMonths.map((item) => <option key={item} value={item}>{monthLabel(item)}</option>)}</select></label><label>Categoría<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">Todas</option><option>Local</option><option>Nacional</option></select></label><label>Nombre<input value={nameFilter} onChange={(event) => setNameFilter(event.target.value)} placeholder="Buscar chofer o ayudante"/></label><label>Vehículo<select value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="">Todos</option>{Array.from(new Set(trips.map((trip) => trip.vehicle))).sort().map((item) => <option key={item}>{item}</option>)}</select></label></div>
     <section className="metrics bonus-metrics"><article><span className="metric-icon">₲</span><div><small>Bonificación del mes</small><strong>{money.format(driverTotal + helperTotal)}</strong><em>{monthLabel(month)}</em></div></article><article><span className="metric-icon positive">♙</span><div><small>Choferes</small><strong>{money.format(driverTotal)}</strong><em>{shownEntries.filter((entry) => entry.personType === "Chofer").length} evaluados</em></div></article><article><span className="metric-icon neutral">♧</span><div><small>Ayudantes</small><strong>{money.format(helperTotal)}</strong><em>{shownEntries.filter((entry) => entry.personType === "Ayudante").length} evaluados</em></div></article></section>
