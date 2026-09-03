@@ -1555,10 +1555,115 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
   const costTotal = totals.costs + totals.fuel;
   const areaLabels: Record<ResultsArea, string> = { executive: "Resumen ejecutivo", profitability: "Rentabilidad", operations: "Rendimiento operativo", fleet: "Flota y combustible", bonuses: "Bonificaciones" };
 
+  async function exportResultsExcel() {
+    try {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.utils.book_new();
+      const excelDate = (value?: string) => value ? new Date(`${value}T12:00:00`) : "";
+      const safeSheetName = (value: string) => value.replace(/[\\/?*\[\]:]/g, " ").slice(0, 31);
+      const addSheet = (name: string, data: Record<string, unknown>[], widths: number[], moneyHeaders: string[] = [], percentHeaders: string[] = []) => {
+        const sheet = XLSX.utils.json_to_sheet(data.length ? data : [{ Información: "Sin datos para los filtros seleccionados" }], { cellDates: true });
+        sheet["!cols"] = widths.map((wch) => ({ wch }));
+        sheet["!autofilter"] = data.length ? { ref: sheet["!ref"]! } : undefined;
+        const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
+        for (let column = range.s.c; column <= range.e.c; column += 1) {
+          const header = String(sheet[XLSX.utils.encode_cell({ r: 0, c: column })]?.v ?? "");
+          for (let row = 1; row <= range.e.r; row += 1) {
+            const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
+            if (!cell) continue;
+            if (moneyHeaders.includes(header) && cell.t === "n") cell.z = "#,##0";
+            if (percentHeaders.includes(header) && cell.t === "n") cell.z = "0.0%";
+            if (cell.t === "d") cell.z = "dd/mm/yyyy";
+          }
+        }
+        XLSX.utils.book_append_sheet(workbook, sheet, safeSheetName(name));
+      };
+
+      addSheet("Resumen", [
+        { Indicador: "Área del informe", Valor: areaLabels[area] },
+        { Indicador: "Periodo", Valor: periodLabel },
+        { Indicador: "Sucursal", Valor: localBranch || "Todas" },
+        { Indicador: "Chapa", Valor: localVehicle || "Todas" },
+        { Indicador: "Chofer", Valor: localDriver || "Todos" },
+        { Indicador: "Tipo de flete", Valor: freightTypeFilter || "Todos" },
+        { Indicador: "Viajes", Valor: rows.length },
+        { Indicador: "Pedidos", Valor: orderCount },
+        { Indicador: "Kilómetros", Valor: Math.round(totalKm) },
+        { Indicador: "Mercadería transportada", Valor: transportedValue },
+        { Indicador: "Fletes calculados", Valor: totals.freight },
+        { Indicador: "Costos operativos", Valor: totals.costs },
+        { Indicador: "Combustible", Valor: totals.fuel },
+        { Indicador: "Resultado neto", Valor: totals.profit },
+        { Indicador: "Margen", Valor: totalMargin / 100 },
+      ], [30, 28]);
+
+      if (area === "executive") {
+        addSheet("Rendimiento de choferes", operationalGroups.map((item) => ({
+          Chofer: item.name, Chapa: item.vehicle, Viajes: item.trips, Entregas: item.orders,
+          Kilómetros: Math.round(item.km), "Mercadería transportada": item.invoiced, Resultado: item.profit,
+        })), [28, 14, 11, 11, 14, 24, 18], ["Mercadería transportada", "Resultado"]);
+      }
+
+      if (area === "profitability") {
+        if (freightTypeFilter) addSheet("Pedidos", matchingOrderRows.map(({ tripId, order, freight }) => ({
+          Viaje: tripId, Factura: order.invoice, Pedido: order.order, Cliente: order.client,
+          Valor: order.amount, "Tipo de flete": order.freightType, "Flete calculado": freight,
+        })), [11, 18, 18, 36, 18, 18, 20], ["Valor", "Flete calculado"]);
+        if (view === "trips") {
+          addSheet("Rentabilidad por viaje", rows.map(({ trip, matchingOrders, invoiced, freight, tripCostsTotal, fuel, profit, margin, km }) => ({
+            Viaje: trip.id, Sucursal: trip.branch, Chapa: trip.vehicle, Chofer: trip.driver,
+            Pedidos: matchingOrders.length, Facturado: invoiced, Flete: freight, Costos: tripCostsTotal,
+            Combustible: fuel, Resultado: profit, Margen: margin / 100, Kilómetros: Math.round(km),
+            "Costo por km": km ? (tripCostsTotal + fuel) / km : 0,
+          })), [11, 22, 14, 28, 11, 18, 18, 18, 18, 18, 12, 14, 18], ["Facturado", "Flete", "Costos", "Combustible", "Resultado", "Costo por km"], ["Margen"]);
+        } else {
+          addSheet(reportLabels[view], grouped.map((item) => ({
+            [view === "branch" ? "Sucursal" : view === "vehicle" ? "Vehículo" : view === "driver" ? "Chofer" : "Cliente"]: item.name,
+            Viajes: item.trips.size, Pedidos: item.orders, Facturado: item.invoiced, Flete: item.freight,
+            Costos: item.costs, Combustible: item.fuel, Resultado: item.profit,
+            Margen: item.freight > 0 ? item.profit / item.freight : 0, Kilómetros: Math.round(item.km),
+            "Costo por km": item.km > 0 ? (item.costs + item.fuel) / item.km : 0,
+          })), [32, 11, 11, 18, 18, 18, 18, 18, 12, 14, 18], ["Facturado", "Flete", "Costos", "Combustible", "Resultado", "Costo por km"], ["Margen"]);
+        }
+      }
+
+      if (area === "operations") addSheet("Rendimiento operativo", operationalRows.map((item) => ({
+        "Fecha inicio": excelDate(item.trip.startDate), "Fecha fin": excelDate(item.trip.endDate), Viaje: item.trip.id,
+        Chofer: item.trip.driver, Chapa: item.trip.vehicle, "Combustible km/L": item.consumption || "Sin ciclo",
+        "Capacidad / tipo": item.capacity, Entregas: item.matchingOrders.length, Kilómetros: Math.round(item.km),
+        "Mercadería transportada": item.invoiced,
+      })), [15, 15, 10, 28, 14, 19, 20, 12, 14, 24], ["Mercadería transportada"]);
+
+      if (area === "fleet") {
+        addSheet("Flota", vehicleGroups.map((item) => ({
+          Chapa: item.vehicle, Viajes: item.trips, Pedidos: item.orders, Kilómetros: Math.round(item.km),
+          Flete: item.freight, Costos: item.costs, Combustible: item.fuel, Resultado: item.profit,
+          "Meta km/L": vehicles.find((vehicle) => vehicle.plate === item.vehicle)?.fuelConsumptionTarget ?? "Pendiente",
+        })), [14, 11, 11, 14, 18, 18, 18, 18, 14], ["Flete", "Costos", "Combustible", "Resultado"]);
+        addSheet("Cargas de combustible", filteredFuelEntries.map((entry) => ({
+          Fecha: excelDate(entry.date), Chapa: entry.vehicle, Estación: entry.station, Litros: entry.liters,
+          "Precio por litro": entry.pricePerLiter, Total: entry.totalValue, Odómetro: entry.odometer,
+          "Tanque completo": entry.fullTank ? "Sí" : "No",
+        })), [15, 14, 28, 12, 18, 18, 14, 18], ["Precio por litro", "Total"]);
+      }
+
+      if (area === "bonuses") addSheet("Bonificaciones", bonusEntries.map((entry) => ({
+        Beneficiario: entry.name, Tipo: entry.personType, Categoría: entry.category, Viajes: entry.trips,
+        Descarga: entry.unloadingMet ? "Cumplido" : "No cumplido", "Sin devolución": entry.damageMet ? "Cumplido" : "No cumplido",
+        "Consumo promedio km/L": entry.personType === "Chofer" ? entry.consumption : "No aplica", Total: entry.total,
+      })), [30, 14, 14, 11, 16, 18, 23, 18], ["Total"]);
+
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(workbook, `resultados_fretecontrol_${area}_${dateStamp}.xlsx`, { compression: true });
+    } catch {
+      window.alert("No se pudo generar el archivo Excel. Intente nuevamente.");
+    }
+  }
+
   return <section className="results-layout">
     <div className="results-heading">
       <div><p className="eyebrow">Gestión empresarial</p><h2>Resultados ejecutivos</h2><p>Visión consolidada para la toma de decisiones.</p><span className="results-updated">Periodo analizado: {periodLabel}</span></div>
-      <button className="primary print-button" onClick={() => printWithBodyMode("printing-results-report")}><Icon name="report"/>Imprimir / Guardar PDF</button>
+      <div className="results-export-actions"><button className="secondary excel-button" onClick={() => void exportResultsExcel()}>↓ Descargar Excel</button><button className="primary print-button" onClick={() => printWithBodyMode("printing-results-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
     </div>
     <div className="report-tabs results-area-tabs" role="tablist" aria-label="Área de resultados">
       {(Object.keys(areaLabels) as ResultsArea[]).map((key) => <button key={key} type="button" role="tab" aria-selected={area === key} className={area === key ? "active" : ""} onClick={() => setArea(key)}>{areaLabels[key]}</button>)}
