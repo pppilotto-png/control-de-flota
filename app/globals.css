@@ -131,7 +131,7 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
 .executive-kpis .fuel-average-card{background:#eef8f6;border-color:#9fcfc8}.executive-kpis .fuel-average-card strong{color:var(--green)}
 @media(min-width:1051px){.executive-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
-/* PDF único de bonificaciones: paginação segura em A4 paisagem */
+/* PDF único de bonificaciones: paginação segura em A4 retrato */
 @media print{
   .bonus-consolidated-report{width:100%!important;max-width:none!important;font-size:8px;line-height:1.15}
   .bonus-consolidated-report .bcr-header{break-after:avoid-page;page-break-after:avoid}
