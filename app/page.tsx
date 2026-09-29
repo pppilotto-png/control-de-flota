@@ -11,7 +11,8 @@ type FreightRates = Record<FreightType, number>;
 type TripStatus = "En curso" | "En tránsito" | "Cargando" | "Pendiente" | "Finalizado";
 type DistanceSource = "Odómetro" | "GPS" | "Ruta" | "Manual";
 type Trip = { id: number; branch: string; startDate: string; endDate?: string; driver: string; helper?: string; vehicle: string; status: TripStatus; kmInitial: number; kmFinal: number; distanceSource?: DistanceSource; estimatedKm?: number; kmValidated?: boolean; validatedBy?: string; gpsConsumedLiters?: number; idleConsumedLiters?: number; fuelInitialLevel?: number; fuelFinalLevel?: number; fuelDataValidated?: boolean; orders: Order[] } & ImportMetadata;
-type ImportedTrip = Trip & { row: number; error?: string };
+type ImportedTripFuel = { refueled: boolean; liters: number; pricePerLiter: number; station: string; fullTank: boolean };
+type ImportedTrip = Trip & { row: number; importedFuel?: ImportedTripFuel; error?: string };
 type CostType = "Consumición" | "Peaje" | "Tape" | "Hospedaje" | "Reparo/Mantenimiento" | "Otros";
 type TripCost = { id: number; tripId: number; date: string; type: CostType; description: string; quantity: number; unitValue: number } & ImportMetadata;
 type ImportedCost = Omit<TripCost, "id"> & { row: number; error?: string };
@@ -672,7 +673,7 @@ export default function Home() {
           {operationalAlerts.length > 8 && <p className="alerts-more">Mostrando 8 de {operationalAlerts.length} alertas. Abra cada módulo para consultar todos.</p>}
         </section>
         <TripTable trips={filteredTrips.filter((trip) => trip.status !== "Finalizado")} rates={freightRates} onAll={() => setActive("trips")} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip}/>
-      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesHistoryModule trips={trips} vehicles={vehicles} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} closures={bonusClosures} setClosures={setBonusClosures} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} fuelCycles={fuelCycles.cycles} fuelEntries={filteredFuel} vehicles={vehicles} bonusClosures={bonusClosures} onReport={setReportTrip}/> : active === "fleet" ? <><div className="fleet-section-tabs" role="tablist" aria-label="Secciones de flota"><button type="button" role="tab" aria-selected={fleetTab === "vehicles"} className={fleetTab === "vehicles" ? "active" : ""} onClick={() => setFleetTab("vehicles")}><Icon name="vehicle"/>Vehículos</button><button type="button" role="tab" aria-selected={fleetTab === "documents"} className={fleetTab === "documents" ? "active" : ""} onClick={() => setFleetTab("documents")}><Icon name="report"/>Documentos</button></div>{fleetTab === "vehicles" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/>}</> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} setTrips={setTrips} tripCosts={tripCosts} setTripCosts={setTripCosts} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
+      </> : active === "trips" ? <TripsModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} branches={branches} vehicles={vehicles} drivers={drivers} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} onToast={setToast} onEdit={openTrip} onFinish={setFinishingTrip} onReport={setReportTrip} onDelete={deleteTrip}/> : active === "orders" ? <OrdersModule trips={filteredTrips} allTrips={trips} setTrips={setTrips} rates={freightRates} setRates={setFreightRates} onToast={setToast} onEdit={(trip) => { openTrip(trip); setTripTab("orders"); }}/> : active === "costs" ? <CostsModule costs={filteredCosts} allCosts={tripCosts} setCosts={setTripCosts} trips={trips} onToast={setToast} onNew={() => { setEditingCost(null); setCostModal(true); }} onEdit={(cost) => { setEditingCost(cost); setCostModal(true); }}/> : active === "fuel" ? <FuelModule entries={filteredFuel} allEntries={fuelEntries} setEntries={setFuelEntries} vehicles={vehicles} vehicleFilter={filters.vehicle} trips={trips} cycles={fuelCycles.cycles} openCycles={fuelCycles.openCycles} onToast={setToast} onNew={() => { setEditingFuel(null); setFuelModal(true); }} onEdit={(entry) => { setEditingFuel(entry); setFuelModal(true); }}/> : active === "bonuses" ? <BonusesHistoryModule trips={trips} vehicles={vehicles} fuelEntries={fuelEntries} cycles={fuelCycles.cycles} reviews={bonusReviews} setReviews={setBonusReviews} helperAssignments={helperAssignments} helperReviews={helperBonusReviews} setHelperReviews={setHelperBonusReviews} closures={bonusClosures} setClosures={setBonusClosures} readOnly={isReadOnly}/> : active === "results" ? <ResultsModule trips={filteredTrips} vehicleFilter={filters.vehicle} rates={freightRates} costs={filteredCosts} fuelByTrip={fuelCycles.allocationByTrip} fuelCycles={fuelCycles.cycles} fuelEntries={filteredFuel} vehicles={vehicles} bonusClosures={bonusClosures} onReport={setReportTrip}/> : active === "fleet" ? <><div className="fleet-section-tabs" role="tablist" aria-label="Secciones de flota"><button type="button" role="tab" aria-selected={fleetTab === "vehicles"} className={fleetTab === "vehicles" ? "active" : ""} onClick={() => setFleetTab("vehicles")}><Icon name="vehicle"/>Vehículos</button><button type="button" role="tab" aria-selected={fleetTab === "documents"} className={fleetTab === "documents" ? "active" : ""} onClick={() => setFleetTab("documents")}><Icon name="report"/>Documentos</button></div>{fleetTab === "vehicles" ? <FleetModule vehicles={vehicles} setVehicles={setVehicles} maintenance={maintenance} setMaintenance={setMaintenance} trips={trips} fuelEntries={fuelEntries} branches={branches} onToast={setToast}/> : <DocumentsModule documents={documents} setDocuments={setDocuments} vehicles={vehicles} drivers={drivers} onToast={setToast}/>}</> : active === "requests" ? <RequestsModule requests={serviceRequests} setRequests={setRequests} maintenance={maintenance} setMaintenance={setMaintenance} vehicles={vehicles} setVehicles={setVehicles} onToast={setToast}/> : active === "settings" ? <SettingsModule branches={branches} setBranches={setBranches} vehicles={vehicles} setVehicles={setVehicles} drivers={drivers} setDrivers={setDrivers} rates={freightRates} setRates={setFreightRates} trips={trips} setTrips={setTrips} tripCosts={tripCosts} setTripCosts={setTripCosts} fuelEntries={fuelEntries} setFuelEntries={setFuelEntries} snapshot={snapshot} onRestore={restoreSnapshot} onToast={setToast} users={users} setUsers={setUsers} auditLog={auditLog} trash={trash} setTrash={setTrash} currentEmail={session.email} helperAssignments={helperAssignments} setHelperAssignments={setHelperAssignments}/> : null}
     </section>
     {modal && <div className="modal-backdrop" onMouseDown={() => setModal(false)}><div className="modal trip-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(e) => e.stopPropagation()}>
       <button className="close" onClick={() => { setModal(false); setEditingTrip(null); setTripFormError(""); }} aria-label="Cerrar">×</button><p className="eyebrow">Operación</p><h2 id="modal-title">{editingTrip ? `Editar viaje N.º ${editingTrip.id}` : "Nuevo viaje"}</h2><p className="modal-intro">Registre los datos del viaje. Los pedidos y costos son opcionales y pueden agregarse después.</p>
@@ -2420,7 +2421,7 @@ function TripTable({ trips, rates, onAll, onEdit, onFinish, onReport, onDelete }
   return <section className="table-card"><div className="card-heading"><div><p className="eyebrow">Seguimiento</p><h2>Viajes registrados</h2></div>{onAll && <button onClick={onAll}>Ver todos los viajes →</button>}</div><div className="table-scroll"><table><thead><tr><th>Viaje</th><th>Sucursal</th><th>Fechas</th><th>Chapa / Chofer</th><th>Estado</th><th>Kilometraje</th><th>Pedidos</th><th>Base facturada</th><th>Flete</th><th>Acciones</th></tr></thead><tbody>{trips.length === 0 ? <tr><td className="no-results" colSpan={10}>No se encontraron viajes con los filtros seleccionados.</td></tr> : trips.map((trip) => <tr key={trip.id}><td><strong>N.º {trip.id}</strong></td><td><strong>{trip.branch}</strong></td><td>{new Intl.DateTimeFormat("es-PY").format(new Date(`${trip.startDate}T12:00:00`))}<small>{trip.endDate ? `Final: ${new Intl.DateTimeFormat("es-PY").format(new Date(`${trip.endDate}T12:00:00`))}` : "Sin fecha final"}</small></td><td><strong>{trip.vehicle}</strong><small>{trip.driver}</small></td><td><span className={`status ${trip.status.toLowerCase().replaceAll(" ", "-")}`}>● {trip.status}</span></td><td>{isEstimatedTrip(trip) ? <><strong>{number.format(tripDistance(trip))} km</strong><small className="estimated-km">Estimado por {trip.distanceSource} · {trip.kmValidated ? "Validado" : "Pendiente"}</small></> : <>{number.format(trip.kmInitial)} → {trip.kmFinal ? number.format(trip.kmFinal) : "—"}<small>{trip.kmFinal ? `${number.format(tripDistance(trip))} km recorridos` : "Viaje no finalizado"}</small></>}</td><td style={{ width: 250, minWidth: 180, maxWidth: 250, whiteSpace: "normal" }}><strong>{trip.orders.length}</strong><small style={{ display: "flex", flexWrap: "wrap", gap: "3px 0", lineHeight: 1.35 }}>{trip.orders.map((order, index) => <span key={`${order.order}-${index}`} style={{ display: "inline-flex", whiteSpace: "nowrap" }}>{order.order}{index < trip.orders.length - 1 ? " · " : ""}</span>)}</small></td><td><strong>{money.format(invoiceTotal(trip))}</strong></td><td><strong className="green">{money.format(freightValue(trip, rates))}</strong><small>Según el tipo de flete</small></td><td><div className="row-actions"><button className="report-action" onClick={() => onReport(trip)}>Ver informe</button><button className="edit-action" onClick={() => onEdit(trip)}>Editar</button>{trip.status !== "Finalizado" && <button className="finish-action" onClick={() => onFinish(trip)}>Finalizar</button>}{onDelete && <button className="delete-action" onClick={() => onDelete(trip)}>Eliminar</button>}</div></td></tr>)}</tbody></table></div></section>;
 }
 
-function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, drivers, onToast, onEdit, onFinish, onReport, onDelete }: { trips: Trip[]; allTrips: Trip[]; setTrips: (trips: Trip[]) => void; rates: FreightRates; branches: Branch[]; vehicles: Vehicle[]; drivers: Driver[]; onToast: (message: string) => void; onEdit: (trip: Trip) => void; onFinish: (trip: Trip) => void; onReport: (trip: Trip) => void; onDelete: (trip: Trip) => void }) {
+function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, drivers, fuelEntries, setFuelEntries, onToast, onEdit, onFinish, onReport, onDelete }: { trips: Trip[]; allTrips: Trip[]; setTrips: (trips: Trip[]) => void; rates: FreightRates; branches: Branch[]; vehicles: Vehicle[]; drivers: Driver[]; fuelEntries: FuelEntry[]; setFuelEntries: (entries: FuelEntry[]) => void; onToast: (message: string) => void; onEdit: (trip: Trip) => void; onFinish: (trip: Trip) => void; onReport: (trip: Trip) => void; onDelete: (trip: Trip) => void }) {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState("");
   const [importRows, setImportRows] = useState<ImportedTrip[]>([]);
@@ -2443,6 +2444,15 @@ function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, dri
     return match ? `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}` : "";
   };
   const parseKm = (value: unknown) => Math.round(Number(String(value ?? "").replace(/[.\s]/g, "").replace(",", "."))) || 0;
+  const parseDecimal = (value: unknown) => {
+    if (typeof value === "number") return value;
+    const raw = String(value ?? "").trim().replace(/[^\d,.-]/g, "");
+    if (!raw) return 0;
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw)) return Number(raw.replace(/\./g, "").replace(",", "."));
+    if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(raw)) return Number(raw.replace(/,/g, ""));
+    return Number(raw.replace(",", ".")) || 0;
+  };
+  const parseBoolean = (value: unknown) => ["si", "s", "yes", "true", "1", "x", "validado", "completo"].includes(normalize(String(value ?? "")));
 
   async function readTripsFile(file?: File) {
     if (!file) return;
@@ -2461,10 +2471,31 @@ function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, dri
         const startDate = normalizeDate(pick(record, ["fechainicio", "fecha", "salida"]));
         const endDate = normalizeDate(pick(record, ["fechafinal", "fechafin", "llegada"])) || undefined;
         const driver = findCanonical(pick(record, ["chofer", "chofer", "conductor"]), drivers.filter((item) => item.active).map((item) => item.name));
+        const helper = String(pick(record, ["ayudante", "ajudante", "auxiliar"]) ?? "").trim() || undefined;
         const vehicle = findCanonical(pick(record, ["chapa", "vehiculo", "placa"]), vehicles.filter((item) => item.active && (item.fleetStatus ?? "Activo") === "Activo").map((item) => item.plate));
+        const vehicleProfile = vehicles.find((item) => item.plate === vehicle);
+        const odometerBroken = vehicleProfile?.odometerStatus === "Averiado";
+        const distanceSource = (findCanonical(pick(record, ["origendelkilometraje", "origendekilometraje", "fuentedelkilometraje"]), ["Odómetro", "GPS", "Ruta", "Manual"]) || (odometerBroken ? "GPS" : "Odómetro")) as DistanceSource;
         const status = findCanonical(pick(record, ["estado", "status"]), tripStatuses) as TripStatus;
-        const kmInitial = parseKm(pick(record, ["kminicial", "kilometrajeinicial", "odometroinicial"]));
+        const importedKmInitial = parseKm(pick(record, ["kminicial", "kilometrajeinicial", "odometroinicial"]));
+        const kmInitial = importedKmInitial || (distanceSource !== "Odómetro" ? vehicleProfile?.lastValidOdometer ?? vehicleProfile?.currentKm ?? 0 : 0);
         const kmFinal = parseKm(pick(record, ["kmfinal", "kilometrajefinal", "odometrofinal"]));
+        const estimatedKm = Math.round(parseDecimal(pick(record, ["kilometrajeestimado", "kmestimado", "distanciaestimada"]))) || undefined;
+        const validatedBy = String(pick(record, ["validadopor", "responsablevalidacion", "responsable"] ) ?? "").trim() || undefined;
+        const kmValidated = parseBoolean(pick(record, ["distanciavalidada", "kmvalidado", "kilometrajevalidado"]));
+        const gpsConsumedLiters = parseDecimal(pick(record, ["consumototalgastadol", "consumototalgastado", "consumototalcombustible", "consumoreallitros"])) || undefined;
+        const fuelInitialRaw = pick(record, ["nivelinicialtanquel", "nivelinicialtanque", "nivelinicialcombustible"]);
+        const fuelFinalRaw = pick(record, ["nivelfinaltanquel", "nivelfinaltanque", "nivelfinalcombustible"]);
+        const fuelInitialLevel = String(fuelInitialRaw ?? "").trim() === "" ? undefined : parseDecimal(fuelInitialRaw);
+        const fuelFinalLevel = String(fuelFinalRaw ?? "").trim() === "" ? undefined : parseDecimal(fuelFinalRaw);
+        const idleConsumedLiters = parseDecimal(pick(record, ["consumoralentil", "consumoenralentil", "ralentilitros"])) || undefined;
+        const fuelDataValidated = parseBoolean(pick(record, ["consumovalidado", "combustiblevalidado", "consumorealvalidado"]));
+        const refueled = parseBoolean(pick(record, ["cargocombustible", "abastecio", "hubocarga"]));
+        const loadedLiters = parseDecimal(pick(record, ["litroscargados", "litrosabastecidos", "cantidadlitros"]));
+        const pricePerLiter = Math.round(parseDecimal(pick(record, ["precioporlitro", "preciolitro", "valorunitario"]))) || 0;
+        const station = String(pick(record, ["estacion", "estaciondeservicio", "proveedorcombustible"]) ?? "").trim();
+        const fullTank = parseBoolean(pick(record, ["tanquecompleto", "llenotanque", "fulltank"]));
+        const fuelMethod = calculationMethodFor(vehicleProfile);
         const errors: string[] = [];
         if (!Number.isInteger(id) || id <= 0) errors.push("Número de viaje inválido");
         if (existingIds.has(id) || seen.has(id)) errors.push("Viaje duplicado");
@@ -2474,11 +2505,19 @@ function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, dri
         if (!driver) errors.push("Chofer no disponible");
         if (!vehicle) errors.push("Vehículo no disponible");
         if (!status) errors.push("Estado inválido");
-        if (kmInitial <= 0) errors.push("Km inicial inválido");
-        if (kmFinal && kmFinal < kmInitial) errors.push("Km final menor al inicial");
-        if (status === "Finalizado" && (!endDate || kmFinal <= kmInitial)) errors.push("Viaje finalizado incompleto");
+        if (odometerBroken && distanceSource === "Odómetro") errors.push("El odómetro del vehículo está averiado");
+        if (distanceSource === "Odómetro" && kmInitial <= 0) errors.push("Km inicial inválido");
+        if (distanceSource === "Odómetro" && kmFinal && kmFinal < kmInitial) errors.push("Km final menor al inicial");
+        if (distanceSource !== "Odómetro" && (!estimatedKm || estimatedKm <= 0)) errors.push("Kilometraje estimado inválido");
+        if (status === "Finalizado" && (!endDate || (distanceSource === "Odómetro" ? kmFinal <= kmInitial : !estimatedKm))) errors.push("Viaje finalizado incompleto");
+        if (gpsConsumedLiters && idleConsumedLiters && idleConsumedLiters > gpsConsumedLiters) errors.push("Ralentí mayor que el consumo total");
+        if (status === "Finalizado") {
+          const missingFuelData = fuelMethod === "GPS / balance del tanque" ? fuelInitialLevel === undefined || fuelFinalLevel === undefined : !gpsConsumedLiters;
+          if (missingFuelData || !fuelDataValidated) errors.push("Consumo real incompleto o sin validar");
+        }
+        if (refueled && (loadedLiters <= 0 || pricePerLiter <= 0)) errors.push("Carga de combustible incompleta");
         if (Number.isInteger(id) && id > 0) seen.add(id);
-        return { row, id, branch, startDate, endDate, driver, vehicle, status: status || "Pendiente", kmInitial, kmFinal, orders: [], error: errors.join(" · ") || undefined };
+        return { row, id, branch, startDate, endDate, driver, helper, vehicle, status: status || "Pendiente", kmInitial, kmFinal, distanceSource, estimatedKm: distanceSource === "Odómetro" ? undefined : estimatedKm, kmValidated: distanceSource === "Odómetro" ? undefined : kmValidated, validatedBy: distanceSource === "Odómetro" ? undefined : validatedBy, gpsConsumedLiters, idleConsumedLiters, fuelInitialLevel, fuelFinalLevel, fuelDataValidated, orders: [], importedFuel: { refueled, liters: loadedLiters, pricePerLiter, station, fullTank }, error: errors.join(" · ") || undefined };
       }));
     } catch {
       setImportRows([]);
@@ -2491,10 +2530,62 @@ function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, dri
   async function downloadTemplate() {
     const XLSX = await import("xlsx");
     const nextId = allTrips.length ? Math.max(...allTrips.map((trip) => trip.id)) + 1 : 1;
-    const sheet = XLSX.utils.json_to_sheet([{ Viaje: nextId, Sucursal: branches.find((item) => item.active)?.name ?? "", "Fecha inicio": new Date().toISOString().slice(0, 10), "Fecha final": "", Chofer: drivers.find((item) => item.active)?.name ?? "", Chapa: vehicles.find((item) => item.active && (item.fleetStatus ?? "Activo") === "Activo")?.plate ?? "", Estado: "Pendiente", "Km inicial": 100000, "Km final": "" }]);
-    sheet["!cols"] = [{ wch: 10 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 24 }, { wch: 15 }, { wch: 16 }, { wch: 14 }, { wch: 14 }];
+    const sampleVehicle = vehicles.find((item) => item.active && (item.fleetStatus ?? "Activo") === "Activo");
+    const sampleDistanceSource: DistanceSource = sampleVehicle?.odometerStatus === "Averiado" ? "GPS" : "Odómetro";
+    const lastVehicleKm = sampleVehicle ? Math.max(sampleVehicle.currentKm ?? 0, ...allTrips.filter((trip) => trip.vehicle === sampleVehicle.plate).map((trip) => trip.kmFinal || trip.kmInitial), 0) : 0;
+    const startDate = new Date();
+    startDate.setHours(12, 0, 0, 0);
+    const sheet = XLSX.utils.json_to_sheet([{
+      Viaje: nextId,
+      Sucursal: branches.find((item) => item.active)?.name ?? "",
+      Chapa: sampleVehicle?.plate ?? "",
+      Chofer: drivers.find((item) => item.active)?.name ?? "",
+      Ayudante: "",
+      "Fecha inicio": startDate,
+      "Fecha final": "",
+      "Origen del kilometraje": sampleDistanceSource,
+      "Km inicial": lastVehicleKm || 100000,
+      "Km final": "",
+      "Kilometraje estimado": sampleDistanceSource === "Odómetro" ? "" : 1,
+      "Validado por": "",
+      "Distancia validada": "No",
+      "Consumo total gastado (L)": "",
+      "Nivel inicial tanque (L)": "",
+      "Nivel final tanque (L)": "",
+      "Consumo ralentí (L)": "",
+      "Consumo validado": "No",
+      "Cargó combustible": "No",
+      "Litros cargados": "",
+      "Precio por litro": "",
+      Estación: "",
+      "Tanque completo": "No",
+      Estado: "Pendiente",
+    }], { cellDates: true });
+    sheet["!cols"] = [{ wch: 10 }, { wch: 22 }, { wch: 15 }, { wch: 28 }, { wch: 28 }, { wch: 15 }, { wch: 15 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 24 }, { wch: 20 }, { wch: 26 }, { wch: 24 }, { wch: 23 }, { wch: 21 }, { wch: 20 }, { wch: 21 }, { wch: 18 }, { wch: 18 }, { wch: 26 }, { wch: 18 }, { wch: 16 }];
+    sheet["!autofilter"] = { ref: sheet["!ref"]! };
+    if (sheet.F2) sheet.F2.z = "dd/mm/yyyy";
+    if (sheet.G2) sheet.G2.z = "dd/mm/yyyy";
+    const instructions = XLSX.utils.aoa_to_sheet([
+      ["CAMPO", "CÓMO COMPLETAR"],
+      ["Viaje", "Número entero, positivo y no repetido."],
+      ["Sucursal / Chapa / Chofer", "Use exactamente los nombres activos registrados en el sistema."],
+      ["Ayudante", "Opcional."],
+      ["Fecha inicio / Fecha final", "Use fechas de Excel o formato dd/mm/aaaa. La fecha final es obligatoria al finalizar."],
+      ["Origen del kilometraje", "Odómetro, GPS, Ruta o Manual."],
+      ["Km inicial / Km final", "Obligatorios para viajes medidos por odómetro; Km final puede quedar vacío al iniciar."],
+      ["Kilometraje estimado", "Obligatorio cuando el origen sea GPS, Ruta o Manual."],
+      ["Distancia validada / Consumo validado", "Indique Sí o No."],
+      ["Consumo total gastado", "Litros realmente consumidos en el viaje; no son los litros cargados."],
+      ["Nivel inicial / Nivel final", "Use para vehículos configurados con GPS / balance del tanque."],
+      ["Cargó combustible", "Indique Sí o No. Si indica Sí, complete litros cargados y precio por litro."],
+      ["Tanque completo", "Indique Sí o No."],
+      ["Estado", tripStatuses.join(", ")],
+      ["Pedidos y costos", "Importe después usando los modelos específicos de Pedidos y Costos."],
+    ]);
+    instructions["!cols"] = [{ wch: 34 }, { wch: 95 }];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Viajes");
+    XLSX.utils.book_append_sheet(workbook, instructions, "Instrucciones");
     XLSX.writeFile(workbook, "modelo_importacion_viajes.xlsx");
   }
 
@@ -2502,22 +2593,46 @@ function TripsModule({ trips, allTrips, setTrips, rates, branches, vehicles, dri
     if (!validRows.length || invalidRows.length) return;
     const importedAt = new Date().toISOString();
     const importBatchId = `trips-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const imported = validRows.map(({ row: _row, error: _error, ...trip }) => ({ ...trip, importBatchId, importedAt, importFileName: importFile }));
+    const imported = validRows.map(({ row: _row, error: _error, importedFuel: _importedFuel, ...trip }) => ({ ...trip, importBatchId, importedAt, importFileName: importFile }));
+    let nextFuelId = fuelEntries.length ? Math.max(...fuelEntries.map((entry) => entry.id)) + 1 : 1;
+    const importedFuelEntries = validRows.flatMap((trip) => {
+      if (!trip.importedFuel?.refueled) return [];
+      const vehicleProfile = vehicles.find((vehicle) => vehicle.plate === trip.vehicle);
+      const odometerAvailable = calculationMethodFor(vehicleProfile) === "Hodómetro / tanque lleno" && vehicleProfile?.odometerStatus !== "Averiado";
+      return [{
+        id: nextFuelId++,
+        tripId: trip.id,
+        date: trip.endDate || trip.startDate,
+        vehicle: trip.vehicle,
+        station: trip.importedFuel.station,
+        liters: trip.importedFuel.liters,
+        pricePerLiter: trip.importedFuel.pricePerLiter,
+        totalValue: Math.round(trip.importedFuel.liters * trip.importedFuel.pricePerLiter),
+        odometer: odometerAvailable ? (trip.kmFinal || trip.kmInitial) : vehicleProfile?.lastValidOdometer ?? vehicleProfile?.currentKm ?? 0,
+        odometerAvailable,
+        fullTank: trip.importedFuel.fullTank,
+        consumptionValidated: calculationMethodFor(vehicleProfile) === "Hodómetro / tanque lleno" ? true : trip.fuelDataValidated,
+        importBatchId,
+        importedAt,
+        importFileName: importFile,
+      } satisfies FuelEntry];
+    });
     setTrips([...imported, ...allTrips].sort((a, b) => b.id - a.id));
+    if (importedFuelEntries.length) setFuelEntries([...importedFuelEntries, ...fuelEntries]);
     setImportOpen(false);
     setImportRows([]);
     setImportFile("");
-    onToast(`${imported.length} viaje(s) importado(s) correctamente.`);
+    onToast(`${imported.length} viaje(s) importado(s) correctamente${importedFuelEntries.length ? ` · ${importedFuelEntries.length} carga(s) vinculada(s)` : ""}.`);
   }
 
   return <section className="trips-layout">
     <div className="orders-toolbar"><div><p className="eyebrow">Carga masiva</p><h2>Importar viajes desde Excel</h2><p>Cree varias viagens antes de cargar sus pedidos y costos.</p></div><div><button className="secondary" onClick={() => void downloadTemplate()}>↓ Descargar modelo</button><button className="primary" onClick={() => setImportOpen(true)}>▤ Importar Excel</button></div></div>
     <TripTable trips={trips} rates={rates} onEdit={onEdit} onFinish={onFinish} onReport={onReport} onDelete={onDelete}/>
     {importOpen && <div className="modal-backdrop" onMouseDown={() => setImportOpen(false)}><div className="modal orders-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-trips-title" onMouseDown={(event) => event.stopPropagation()}>
-      <button className="close" onClick={() => setImportOpen(false)} aria-label="Cerrar">×</button><p className="eyebrow">Carga masiva</p><h2 id="import-trips-title">Importar viajes</h2><p className="modal-intro">Columnas: Viaje, Sucursal, Fecha inicio, Fecha final, Chofer, Chapa, Estado, Km inicial y Km final.</p>
+      <button className="close" onClick={() => setImportOpen(false)} aria-label="Cerrar">×</button><p className="eyebrow">Carga masiva</p><h2 id="import-trips-title">Importar viajes</h2><p className="modal-intro">El modelo incluye todos los datos de Nuevo viaje: operación, recorrido, consumo real y carga de combustible.</p>
       <label className="excel-drop"><input type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" onChange={(event) => void readTripsFile(event.target.files?.[0])}/><span>▤</span><strong>{importBusy ? "Leyendo archivo…" : importFile || "Seleccionar archivo Excel"}</strong><small>Excel, XLS o CSV · primera hoja del archivo</small></label>
       {importRows.length > 0 && <><div className="import-summary"><span className="ok"><strong>{validRows.length}</strong><small>válidos</small></span><span className={invalidRows.length ? "error" : "ok"}><strong>{invalidRows.length}</strong><small>con error</small></span><span><strong>{new Set(validRows.map((row) => row.vehicle)).size}</strong><small>vehículos</small></span></div>
-        <div className="import-preview"><table><thead><tr><th>Línea</th><th>Viaje</th><th>Sucursal</th><th>Inicio / fin</th><th>Chapa / chofer</th><th>Estado</th><th>Kilometraje</th><th>Validación</th></tr></thead><tbody>{importRows.map((row) => <tr key={row.row} className={row.error ? "invalid" : ""}><td>{row.row}</td><td>N.º {row.id || "—"}</td><td>{row.branch || "—"}</td><td>{row.startDate || "—"}<small>{row.endDate || "Sin fecha final"}</small></td><td>{row.vehicle || "—"}<small>{row.driver || "—"}</small></td><td>{row.status}</td><td>{row.kmInitial ? number.format(row.kmInitial) : "—"} → {row.kmFinal ? number.format(row.kmFinal) : "—"}</td><td>{row.error ? <span className="import-error">⚠ {row.error}</span> : <span className="import-ok">✓ Listo</span>}</td></tr>)}</tbody></table></div>
+        <div className="import-preview"><table><thead><tr><th>Línea</th><th>Viaje</th><th>Sucursal</th><th>Inicio / fin</th><th>Chapa / equipo</th><th>Estado</th><th>Recorrido</th><th>Combustible</th><th>Validación</th></tr></thead><tbody>{importRows.map((row) => <tr key={row.row} className={row.error ? "invalid" : ""}><td>{row.row}</td><td>N.º {row.id || "—"}</td><td>{row.branch || "—"}</td><td>{row.startDate || "—"}<small>{row.endDate || "Sin fecha final"}</small></td><td>{row.vehicle || "—"}<small>{row.driver || "—"}{row.helper ? ` · ${row.helper}` : ""}</small></td><td>{row.status}</td><td><strong>{row.distanceSource}</strong><small>{row.distanceSource === "Odómetro" ? `${row.kmInitial ? number.format(row.kmInitial) : "—"} → ${row.kmFinal ? number.format(row.kmFinal) : "—"}` : `${row.estimatedKm ? number.format(row.estimatedKm) : "—"} km · ${row.kmValidated ? "Validado" : "Pendiente"}`}</small></td><td>{row.gpsConsumedLiters ? `${number.format(row.gpsConsumedLiters)} L` : row.fuelInitialLevel !== undefined || row.fuelFinalLevel !== undefined ? `${number.format(row.fuelInitialLevel ?? 0)} → ${number.format(row.fuelFinalLevel ?? 0)} L` : "—"}<small>{row.importedFuel?.refueled ? `${number.format(row.importedFuel.liters)} L cargados` : "Sin carga"}</small></td><td>{row.error ? <span className="import-error">⚠ {row.error}</span> : <span className="import-ok">✓ Listo</span>}</td></tr>)}</tbody></table></div>
       </>}
       <p className="import-note">Sucursales, choferes y vehículos deben estar activos y previamente registrados. La importación solo se habilita cuando todas las líneas son válidas.</p>
       <div className="form-actions"><button className="secondary" type="button" onClick={() => setImportOpen(false)}>Cancelar</button><button className="primary" type="button" disabled={!validRows.length || invalidRows.length > 0 || importBusy} onClick={confirmImport}>Importar {validRows.length || ""} viaje(s)</button></div>
