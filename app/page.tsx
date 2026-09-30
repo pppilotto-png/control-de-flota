@@ -1664,7 +1664,7 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
   return <section className="results-layout">
     <div className="results-heading">
       <div><p className="eyebrow">Gestión empresarial</p><h2>Resultados ejecutivos</h2><p>Visión consolidada para la toma de decisiones.</p><span className="results-updated">Periodo analizado: {periodLabel}</span></div>
-      <div className="results-export-actions"><button className="secondary excel-button" onClick={() => void exportResultsExcel()}>↓ Descargar Excel</button><button className="primary print-button" onClick={() => printWithBodyMode("printing-results-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
+      <div className="results-export-actions"><button className="secondary excel-button" onClick={() => void exportResultsExcel()}>↓ Descargar Excel</button><button className="primary print-button" onClick={() => area === "executive" ? printStandaloneReport(".results-layout", "Resultados ejecutivos", "printing-results-report", "landscape") : printWithBodyMode("printing-results-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
     </div>
     <div className="report-tabs results-area-tabs" role="tablist" aria-label="Área de resultados">
       {(Object.keys(areaLabels) as ResultsArea[]).map((key) => <button key={key} type="button" role="tab" aria-selected={area === key} className={area === key ? "active" : ""} onClick={() => setArea(key)}>{areaLabels[key]}</button>)}
