@@ -775,7 +775,7 @@ export default function Home() {
         <div className="form-actions"><button type="button" className="secondary" onClick={() => { setFuelModal(false); setEditingFuel(null); }}>Cancelar</button><button className="primary" type="submit">{editingFuel ? "Guardar cambios" : "Guardar carga"}</button></div>
       </form>
     </div></div>}
-    {reportTrip && <TripReport trip={reportTrip} rates={freightRates} costs={tripCosts.filter((cost) => cost.tripId === reportTrip.id)} fuelCycles={fuelCycles.cycles} fuelEntries={fuelEntries} fuelValue={fuelCycles.allocationByTrip.get(reportTrip.id) ?? 0} onClose={() => setReportTrip(null)}/>}
+    {reportTrip && <TripReport trip={reportTrip} rates={freightRates} costs={tripCosts.filter((cost) => cost.tripId === reportTrip.id)} fuelEntries={fuelEntries} onClose={() => setReportTrip(null)}/>}
     {toast && <div className="toast">✓ {toast}</div>}
   </main>;
 }
@@ -868,24 +868,24 @@ function printStandaloneReport(selector: string, title: string, fallbackMode: st
   }, { once: true });
 }
 
-function TripReport({ trip, rates, costs, fuelCycles, fuelEntries, fuelValue, onClose }: {
+function TripReport({ trip, rates, costs, fuelEntries, onClose }: {
   trip: Trip;
   rates: FreightRates;
   costs: TripCost[];
-  fuelCycles: FuelCycle[];
   fuelEntries: FuelEntry[];
-  fuelValue: number;
   onClose: () => void;
 }) {
   const freight = freightValue(trip, rates);
   const totalCosts = costs.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
-  const result = freight - totalCosts - fuelValue;
-  const margin = freight > 0 ? result / freight * 100 : 0;
   const km = tripDistance(trip);
-  const allocations = fuelCycles.flatMap((cycle) => cycle.allocations
-    .filter((allocation) => allocation.tripId === trip.id)
-    .map((allocation) => ({ cycle, allocation })));
   const actualConsumedLiters = tripConsumedFuel(trip, fuelEntries);
+  const assignedFuelEntries = fuelEntries.filter((entry) => entry.tripId === trip.id);
+  const assignedFuelLiters = assignedFuelEntries.reduce((sum, entry) => sum + entry.liters, 0);
+  const assignedFuelTotalValue = assignedFuelEntries.reduce((sum, entry) => sum + entry.totalValue, 0);
+  const assignedFuelPrice = assignedFuelLiters > 0 ? assignedFuelTotalValue / assignedFuelLiters : 0;
+  const calculatedFuelValue = actualConsumedLiters > 0 && assignedFuelPrice > 0 ? Math.round(actualConsumedLiters * assignedFuelPrice) : 0;
+  const result = freight - totalCosts - calculatedFuelValue;
+  const margin = freight > 0 ? result / freight * 100 : 0;
   const averageFuelConsumption = actualConsumedLiters > 0 ? km / actualConsumedLiters : 0;
   const formatDate = (value?: string) => value ? new Intl.DateTimeFormat("es-PY").format(new Date(`${value}T12:00:00`)) : "—";
 
@@ -915,18 +915,14 @@ function TripReport({ trip, rates, costs, fuelCycles, fuelEntries, fuelValue, on
         </tbody></table></div>
       </section>
 
-      <section className="report-section"><div className="report-section-title"><span>04</span><div><small>COMBUSTIBLE</small><h2>Prorrateo por ciclos</h2></div><strong>Promedio del viaje: {averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></div>
-        <div className="report-table-wrap"><table><thead><tr><th>Ciclo</th><th>Chapa</th><th>Km del ciclo</th><th>Promedio del ciclo</th><th>Km asignados</th><th>Combustible consumido</th><th>% consumido</th><th>Valor asignado</th></tr></thead><tbody>
-          {allocations.length ? allocations.map(({ cycle, allocation }) => {
-            const consumedForTrip = cycle.consumptionValidated ? allocation.consumedLiters : 0;
-            const consumedPercentage = cycle.availableLiters > 0 ? consumedForTrip / cycle.availableLiters * 100 : 0;
-            return <tr key={`${cycle.id}-${allocation.tripId}`}><td>{cycle.distanceMethod === "GPS / distancia alternativa" ? `${cycle.startDate ?? "—"} → ${cycle.endDate ?? "—"}` : `${number.format(cycle.startOdometer)} → ${number.format(cycle.endOdometer)}`}</td><td>{cycle.vehicle}</td><td>{number.format(cycle.distance)} km</td><td><strong>{cycle.consumptionValidated && cycle.consumedLiters > 0 ? `${(cycle.distance / cycle.consumedLiters).toFixed(2)} km/L` : "Pendiente de validación"}</strong><small>{cycle.consumptionMethod}</small></td><td>{number.format(allocation.km)} km</td><td><strong>{consumedForTrip > 0 ? `${number.format(Number(consumedForTrip.toFixed(1)))} L` : "Pendiente"}</strong><small>{cycle.availableLiters > 0 ? `de ${number.format(Number(cycle.availableLiters.toFixed(1)))} L disponibles` : "Sin saldo disponible"}</small></td><td><strong>{consumedForTrip > 0 && cycle.availableLiters > 0 ? `${consumedPercentage.toFixed(1)}%` : "—"}</strong></td><td><strong>{money.format(allocation.value)}</strong></td></tr>;
-          }) : <tr><td colSpan={8}>Ciclo abierto o sin combustible asignado definitivamente.</td></tr>}
+      <section className="report-section"><div className="report-section-title"><span>04</span><div><small>COMBUSTIBLE</small><h2>Consumo y costo del viaje</h2></div><strong>Promedio del viaje: {averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></div>
+        <div className="report-table-wrap"><table><thead><tr><th>Chapa</th><th>Combustible consumido</th><th>Carga asignada</th><th>Precio por litro</th><th>Promedio</th><th>Valor calculado</th></tr></thead><tbody>
+          <tr><td><strong>{trip.vehicle}</strong></td><td><strong>{actualConsumedLiters > 0 ? `${number.format(Number(actualConsumedLiters.toFixed(2)))} L` : "Sin consumo validado"}</strong></td><td><strong>{assignedFuelLiters > 0 ? `${number.format(Number(assignedFuelLiters.toFixed(2)))} L` : "Sin carga vinculada"}</strong><small>{assignedFuelEntries.length ? `${assignedFuelEntries.length} carga(s) vinculada(s)` : "Asigne una carga a este viaje"}</small></td><td><strong>{assignedFuelPrice > 0 ? money.format(assignedFuelPrice) : "Sin precio asignado"}</strong><small>{assignedFuelEntries.length > 1 ? "Promedio ponderado por litros" : "Precio de la carga vinculada"}</small></td><td><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></td><td><strong>{calculatedFuelValue > 0 ? money.format(calculatedFuelValue) : "Pendiente"}</strong><small>{actualConsumedLiters > 0 && assignedFuelPrice > 0 ? `${number.format(Number(actualConsumedLiters.toFixed(2)))} L × ${money.format(assignedFuelPrice)}` : "Faltan consumo validado o carga vinculada"}</small></td></tr>
         </tbody></table></div>
       </section>
 
       <section className="report-section report-result-section"><div className="report-section-title"><span>05</span><div><small>CIERRE</small><h2>Resultado financiero</h2></div></div>
-        <div className="report-result-grid"><div><small>Flete total</small><strong>{money.format(freight)}</strong></div><div><small>Costos operativos</small><strong>{money.format(totalCosts)}</strong></div><div><small>Combustible</small><strong>{money.format(fuelValue)}</strong></div><div><small>Combustible consumido</small><strong>{actualConsumedLiters > 0 ? `${number.format(actualConsumedLiters)} L` : "Sin consumo validado"}</strong></div><div><small>Promedio del viaje</small><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></div><div className={result >= 0 ? "report-profit" : "report-loss"}><small>Ganancia / Pérdida</small><strong>{money.format(result)}</strong></div><div><small>Margen</small><strong>{margin.toFixed(1)}%</strong></div><div><small>Costo por km</small><strong>{km ? money.format((totalCosts + fuelValue) / km) : "—"}</strong></div></div>
+        <div className="report-result-grid"><div><small>Flete total</small><strong>{money.format(freight)}</strong></div><div><small>Costos operativos</small><strong>{money.format(totalCosts)}</strong></div><div><small>Combustible</small><strong>{calculatedFuelValue > 0 ? money.format(calculatedFuelValue) : "Pendiente"}</strong></div><div><small>Combustible consumido</small><strong>{actualConsumedLiters > 0 ? `${number.format(actualConsumedLiters)} L` : "Sin consumo validado"}</strong></div><div><small>Promedio del viaje</small><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></div><div className={result >= 0 ? "report-profit" : "report-loss"}><small>Ganancia / Pérdida</small><strong>{money.format(result)}</strong></div><div><small>Margen</small><strong>{margin.toFixed(1)}%</strong></div><div><small>Costo por km</small><strong>{km ? money.format((totalCosts + calculatedFuelValue) / km) : "—"}</strong></div></div>
       </section>
       <footer className="report-footer"><span>FreteControl ERP · Informe del viaje N.º {trip.id}</span><span>Valores expresados en guaraníes (PYG)</span></footer>
     </article>
