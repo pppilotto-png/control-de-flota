@@ -1609,7 +1609,7 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
         { Indicador: "Tipo de flete", Valor: freightTypeFilter || "Todos" },
         { Indicador: "Viajes", Valor: rows.length },
         { Indicador: "Pedidos", Valor: orderCount },
-        { Indicador: "Total de kilómetros recorridos", Valor: Math.round(area === "executive" ? totalTravelledKm : totalKm) },
+        { Indicador: "Total de kilómetros recorridos", Valor: Math.round(area === "profitability" ? totalTravelledKm : totalKm) },
         { Indicador: "Mercadería transportada", Valor: transportedValue },
         { Indicador: "Fletes calculados", Valor: totals.freight },
         { Indicador: "Costos operativos", Valor: totals.costs },
@@ -1710,7 +1710,8 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
       </tbody></table></div>
     </div>}
     <div className={`result-kpis ${area === "executive" ? "executive-kpis" : ""}`}>
-      {area === "executive" && <><article><small>Viajes</small><strong>{rows.length}</strong><span>{finalizedTrips} finalizados · {openTrips} abiertos</span></article><article><small>Entregas</small><strong>{orderCount}</strong><span>Pedidos del periodo</span></article><article><small>Total de kilómetros recorridos</small><strong>{number.format(Math.round(totalTravelledKm))} km</strong><span>Suma real de las distancias de los viajes filtrados</span></article><article><small>Mercadería transportada</small><strong>{money.format(transportedValue)}</strong><span>Valor total registrado</span></article></>}
+      {area === "executive" && <><article><small>Viajes</small><strong>{rows.length}</strong><span>{finalizedTrips} finalizados · {openTrips} abiertos</span></article><article><small>Entregas</small><strong>{orderCount}</strong><span>Pedidos del periodo</span></article><article><small>Mercadería transportada</small><strong>{money.format(transportedValue)}</strong><span>Valor total registrado</span></article></>}
+      {area === "profitability" && <article><small>Total de kilómetros recorridos</small><strong>{number.format(Math.round(totalTravelledKm))} km</strong><span>Suma real de las distancias de los viajes filtrados</span></article>}
       <article><small>Fletes calculados</small><strong>{money.format(totals.freight)}</strong><span>Según pedidos y tipo de flete</span></article>
       <article><small>Costos operativos</small><strong>{money.format(totals.costs)}</strong><span>Sin combustible duplicado</span></article>
       <article><small>Combustible</small><strong>{money.format(totals.fuel)}</strong><span>Rateado por ciclos cerrados</span></article>
