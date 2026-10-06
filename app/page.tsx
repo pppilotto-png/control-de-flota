@@ -780,9 +780,18 @@ export default function Home() {
   </main>;
 }
 
-function printWithBodyMode(mode: string) {
+function printWithBodyMode(mode: string, orientation?: "portrait" | "landscape") {
   const body = document.body;
-  const cleanup = () => body.classList.remove(mode);
+  const pageStyle = orientation ? document.createElement("style") : null;
+  if (pageStyle) {
+    pageStyle.dataset.printOrientation = orientation;
+    pageStyle.textContent = `@media print { @page { size: A4 ${orientation}; margin: 10mm; } }`;
+    document.head.appendChild(pageStyle);
+  }
+  const cleanup = () => {
+    body.classList.remove(mode);
+    pageStyle?.remove();
+  };
 
   body.classList.add(mode);
   window.addEventListener("afterprint", cleanup, { once: true });
@@ -1684,7 +1693,7 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
   return <section className="results-layout">
     <div className="results-heading">
       <div><p className="eyebrow">Gestión empresarial</p><h2>Resultados ejecutivos</h2><p>Visión consolidada para la toma de decisiones.</p><span className="results-updated">Periodo analizado: {periodLabel}</span></div>
-      <div className="results-export-actions"><button className="secondary excel-button" onClick={() => void exportResultsExcel()}>↓ Descargar Excel</button><button className="primary print-button" onClick={() => printWithBodyMode("printing-results-report")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
+      <div className="results-export-actions"><button className="secondary excel-button" onClick={() => void exportResultsExcel()}>↓ Descargar Excel</button><button className="primary print-button" onClick={() => printWithBodyMode("printing-results-report", "landscape")}><Icon name="report"/>Imprimir / Guardar PDF</button></div>
     </div>
     <div className="report-tabs results-area-tabs" role="tablist" aria-label="Área de resultados">
       {(Object.keys(areaLabels) as ResultsArea[]).map((key) => <button key={key} type="button" role="tab" aria-selected={area === key} className={area === key ? "active" : ""} onClick={() => setArea(key)}>{areaLabels[key]}</button>)}
