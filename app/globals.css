@@ -327,7 +327,7 @@ nav { display:grid; gap:8px; }.nav-item { width:100%; border:0; background:trans
   .individual-bonus-report footer{margin-top:12px;padding-top:7px;border-top:1px solid #9aa7a3;text-align:center;font-size:9px;color:#5c6965}
 }
 
-/* Alineación del informe consolidado de bonificaciones */
+.ibr-vehicle-targets{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:6px;vertical-align:middle}.ibr-vehicle-targets b{display:inline-block;padding:2px 6px;border:1px solid #9fc9c2;border-radius:5px;background:#edf7f4;color:#075e55;font-size:9px;line-height:1.25;white-space:nowrap}\n\n/* Alineación del informe consolidado de bonificaciones */
 .bcr-section th,.bcr-section td,.bcr-summary td,.bcr-summary td:last-child,.bcr-total{text-align:center!important}
 .bcr-section .fulfilled,.bcr-section .not-fulfilled{display:inline-block;text-align:center}
 .bcr-compact th:nth-child(1){width:22%}.bcr-compact th:nth-child(2){width:14%}.bcr-compact th:nth-child(3){width:24%}.bcr-compact th:nth-child(4){width:25%}.bcr-compact th:nth-child(5){width:15%}.bcr-compact td{font-size:9px}.bcr-compact td:nth-child(3),.bcr-compact td:nth-child(4){white-space:normal}
