@@ -41,7 +41,7 @@ type TrashEntry = { id: string; deletedAt: string; deletedBy: string; collection
 type BonusReview = { month: string; driver: string; noDamageReturns: boolean };
 type HelperAssignment = { driver: string; helper: string };
 type HelperBonusReview = { month: string; driver: string; helper: string; noDamageReturns: boolean };
-type BonusClosureEntry = { personType: "Chofer" | "Ayudante"; name: string; driver?: string; category: "Local" | "Nacional"; vehicles: string; trips: number; consumption: number; previousConsumption: number; target: number; unloadingBonus: number; damageBonus: number; fuelBonus: number; total: number; unloadingMet: boolean; damageMet: boolean; fuelScore: number };
+type BonusClosureEntry = { personType: "Chofer" | "Ayudante"; name: string; driver?: string; category: "Local" | "Nacional"; vehicles: string; trips: number; consumption: number; previousConsumption: number; target: number; unloadingBonus: number; damageBonus: number; fuelBonus: number; total: number; unloadingMet: boolean; damageMet: boolean; fuelScore: number; manualEdited?: boolean; editedAt?: string };
 type BonusClosure = { month: string; closedAt: string; entries: BonusClosureEntry[] };
 type ErpSnapshot = { version: 1; exportedAt: string; trips: Trip[]; tripCosts: TripCost[]; fuelEntries: FuelEntry[]; maintenance: Maintenance[]; serviceRequests: ServiceRequest[]; documents: FleetDocument[]; branches: Branch[]; vehicles: Vehicle[]; drivers: Driver[]; freightRates: FreightRates; users?: ErpUser[]; auditLog?: AuditEntry[]; trash?: TrashEntry[]; bonusReviews?: BonusReview[]; helperAssignments?: HelperAssignment[]; helperBonusReviews?: HelperBonusReview[]; bonusClosures?: BonusClosure[] };
 
@@ -1237,7 +1237,7 @@ function BonusesModule({ trips, fuelEntries, cycles, reviews, setReviews, helper
     <section className="table-card bonus-card">
       <div className="bonus-section-title"><div><p className="eyebrow">Detalle</p><h3>Choferes</h3></div><strong>{money.format(driverTotal)}</strong></div>
       <div className="bonus-rules"><strong>Reglas:</strong> consumo paga 0%, 50%, 75% o 100% según alcance menos de 90%, 90%, 95% o 100% de la meta. Descarga se paga con al menos un viaje en el mes.</div>
-      <div className="table-scroll"><table className="bonus-table"><thead><tr><th>Chofer</th><th>Categoría</th><th>Viajes</th><th>Consumo km/L</th><th>Promedio</th><th>Descarga</th><th>Sin devolución por averías</th><th>Total</th><th>Informe</th></tr></thead><tbody>
+      <div className="table-scroll"><table className="bonus-table"><thead><tr><th>Chofer</th><th>Categoría</th><th>Viajes</th><th>Consumo km/L</th><th>Promedio</th><th>Descarga</th><th>Sin devolución por averías</th><th>Total</th><th>Acciones</th></tr></thead><tbody>
         {rows.map((row) => <tr key={row.driver}><td><strong>{row.driver}</strong><small>{row.vehicles}</small></td><td><span className="status-badge">{row.category}</span></td><td>{row.trips}</td><td><strong>{row.consumption ? row.consumption.toFixed(2) : "Sin ciclo"}</strong><small>Meta {row.target ? row.target.toFixed(2) : "pendiente"}</small></td><td><strong>{money.format(row.fuelBonus)}</strong><small>{Math.round(row.score * 100)}% del máximo</small></td><td><strong>{money.format(row.unloadingBonus)}</strong><small>Elegible</small></td><td><label className="bonus-check"><input type="checkbox" checked={row.reviewed} disabled={readOnly} onChange={(event) => updateDamageReview(row.driver, event.target.checked)}/><span>{row.reviewed ? money.format(row.damageBonus) : "Pendiente de confirmar"}</span></label></td><td><strong>{money.format(row.total)}</strong></td><td><button className="edit-action team-print-button" onClick={() => printTeam(row.driver)}>Imprimir equipo</button></td></tr>)}
         {!rows.length && <tr><td colSpan={9}>No hay viajes registrados para este periodo.</td></tr>}
       </tbody></table></div>
@@ -1302,6 +1302,7 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
   const [nameFilter, setNameFilter] = useState("");
   const [vehicleFilter, setVehicleFilter] = useState("");
   const [reportDriverName, setReportDriverName] = useState("");
+  const [editingBonus, setEditingBonus] = useState<BonusClosureEntry | null>(null);
   const monthLabel = (value: string) => {
     const [year, monthNumber] = value.split("-").map(Number);
     return new Intl.DateTimeFormat("es-PY", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNumber - 1, 1))).replace(/^./, (letter) => letter.toUpperCase());
@@ -1357,8 +1358,16 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
     const missing = availableMonths.filter((item) => item < latestMonth && !closures.some((closure) => closure.month === item));
     if (missing.length) setClosures([...closures, ...missing.map((item) => ({ month: item, closedAt: new Date().toISOString(), entries: calculateEntries(item) }))]);
   }, [availableMonths.join("|"), latestMonth, closures.length]);
-  const closed = closures.find((closure) => closure.month === month);
-  const monthlyEntries = closed?.entries ?? calculateEntries(month);
+  const storedMonth = closures.find((closure) => closure.month === month);
+  const closed = storedMonth?.closedAt ? storedMonth : undefined;
+  const calculatedEntries = calculateEntries(month);
+  const manualEntries = storedMonth && !storedMonth.closedAt ? storedMonth.entries.filter((entry) => entry.manualEdited) : [];
+  const bonusKey = (entry: Pick<BonusClosureEntry, "personType" | "name" | "driver">) => `${entry.personType}|${entry.name}|${entry.driver ?? ""}`;
+  const calculatedKeys = new Set(calculatedEntries.map(bonusKey));
+  const monthlyEntries = closed?.entries ?? [
+    ...calculatedEntries.map((entry) => manualEntries.find((manual) => bonusKey(manual) === bonusKey(entry)) ?? entry),
+    ...manualEntries.filter((entry) => !calculatedKeys.has(bonusKey(entry))),
+  ];
   const filterEntry = (entry: BonusClosureEntry) => (!categoryFilter || entry.category === categoryFilter) && (!nameFilter || entry.name.toLocaleLowerCase("es-PY").includes(nameFilter.toLocaleLowerCase("es-PY"))) && (!vehicleFilter || entry.vehicles.split(", ").includes(vehicleFilter));
   const shownEntries = monthlyEntries.filter(filterEntry);
   const reportDriver = monthlyEntries.find((entry) => entry.personType === "Chofer" && entry.name === reportDriverName);
@@ -1368,7 +1377,8 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
   const reportDistance = reportCycles.filter((cycle) => cycle.consumptionValidated).reduce((sum, cycle) => sum + cycle.distance, 0);
   const reportLiters = reportCycles.filter((cycle) => cycle.consumptionValidated).reduce((sum, cycle) => sum + cycle.consumedLiters, 0);
   const reportEvolution = reportDriver?.previousConsumption && reportDriver.consumption ? (reportDriver.consumption - reportDriver.previousConsumption) / reportDriver.previousConsumption * 100 : null;
-  const currentHistory = closures.some((closure) => closure.month === latestMonth) ? closures : [...closures, { month: latestMonth, closedAt: "", entries: calculateEntries(latestMonth) }];
+  const closedHistory = closures.filter((closure) => Boolean(closure.closedAt));
+  const currentHistory = closedHistory.some((closure) => closure.month === latestMonth) ? closedHistory : [...closedHistory, { month: latestMonth, closedAt: "", entries: latestMonth === month ? monthlyEntries : calculateEntries(latestMonth) }];
   const historyGroups = Array.from(new Set(currentHistory.flatMap((closure) => closure.entries.map((entry) => `${entry.personType}|${entry.name}`)))).map((key) => {
     const [personType, name] = key.split("|") as ["Chofer" | "Ayudante", string];
     const records = currentHistory.flatMap((closure) => closure.entries.filter((entry) => entry.personType === personType && entry.name === name).map((entry) => ({ month: closure.month, entry }))).sort((a, b) => a.month.localeCompare(b.month));
@@ -1386,21 +1396,65 @@ function BonusesHistoryModule({ trips, vehicles, fuelEntries, cycles, reviews, s
   const closeMonth = () => {
     if (closed || !monthlyEntries.length || readOnly) return;
     if (!window.confirm(`¿Cerrar las bonificaciones de ${monthLabel(month)}? Los valores quedarán preservados como histórico.`)) return;
-    setClosures([...closures, { month, closedAt: new Date().toISOString(), entries: monthlyEntries }]);
+    const nextClosure: BonusClosure = { month, closedAt: new Date().toISOString(), entries: monthlyEntries };
+    setClosures(storedMonth ? closures.map((closure) => closure.month === month ? nextClosure : closure) : [...closures, nextClosure]);
   };
   const updateDamage = (entry: BonusClosureEntry, checked: boolean) => {
-    if (closed) return;
+    if (closed || entry.manualEdited) return;
     if (entry.personType === "Chofer") setReviews([...reviews.filter((item) => !(item.month === month && item.driver === entry.name)), { month, driver: entry.name, noDamageReturns: checked }]);
     else setHelperReviews([...helperReviews.filter((item) => !(item.month === month && item.driver === entry.driver && item.helper === entry.name)), { month, driver: entry.driver ?? "", helper: entry.name, noDamageReturns: checked }]);
+  };
+  const saveEditedBonus = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingBonus || readOnly) return;
+    const form = new FormData(event.currentTarget);
+    const unloadingMet = form.get("unloadingMet") === "on";
+    const damageMet = form.get("damageMet") === "on";
+    const fuelScore = editingBonus.personType === "Chofer" ? Math.max(0, Math.min(1, Number(form.get("fuelScore") || 0) / 100)) : 0;
+    const unloadingBonus = unloadingMet ? Math.max(0, Number(form.get("unloadingBonus") || 0)) : 0;
+    const damageBonus = damageMet ? Math.max(0, Number(form.get("damageBonus") || 0)) : 0;
+    const fuelBonus = editingBonus.personType === "Chofer" && fuelScore > 0 ? Math.max(0, Number(form.get("fuelBonus") || 0)) : 0;
+    const updated: BonusClosureEntry = {
+      ...editingBonus,
+      unloadingMet,
+      damageMet,
+      fuelScore,
+      unloadingBonus,
+      damageBonus,
+      fuelBonus,
+      total: unloadingBonus + damageBonus + fuelBonus,
+      manualEdited: true,
+      editedAt: new Date().toISOString(),
+    };
+    const currentEntries = storedMonth?.closedAt ? storedMonth.entries : storedMonth?.entries.filter((entry) => entry.manualEdited) ?? [];
+    const nextEntries = currentEntries.some((entry) => bonusKey(entry) === bonusKey(updated))
+      ? currentEntries.map((entry) => bonusKey(entry) === bonusKey(updated) ? updated : entry)
+      : [...currentEntries, updated];
+    const nextMonth: BonusClosure = { month, closedAt: storedMonth?.closedAt ?? "", entries: nextEntries };
+    setClosures(storedMonth ? closures.map((closure) => closure.month === month ? nextMonth : closure) : [...closures, nextMonth]);
+    setEditingBonus(null);
   };
   return <div className="bonus-module bonus-history-module">
     <section className="module-head bonus-screen-head"><div><p className="eyebrow">Gestión de desempeño</p><h2>Bonificaciones</h2><p className="muted">Evaluación mensual, histórico preservado y seguimiento de los últimos 3 meses.</p></div><div className="bonus-head-actions"><button className="secondary" onClick={() => printStandaloneReport(".bonus-history-print", `Bonificaciones — ${monthLabel(month)}`, "printing-bonus-consolidated", "portrait")}><Icon name="report"/>PDF único</button>{!closed && <button className="primary" disabled={readOnly || !monthlyEntries.length} onClick={closeMonth}>Cerrar mes</button>}{closed && <span className="branch-status active">Mes cerrado</span>}</div></section>
     <div className="report-tabs">{(["monthly", "history", "ranking"] as View[]).map((item) => <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>{item === "monthly" ? "Resumen mensual" : item === "history" ? "Histórico" : "Ranking"}</button>)}</div>
     <div className="bonus-history-filters"><label>Mes<select value={month} onChange={(event) => setMonth(event.target.value)}>{availableMonths.map((item) => <option key={item} value={item}>{monthLabel(item)}</option>)}</select></label><label>Categoría<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">Todas</option><option>Local</option><option>Nacional</option></select></label><label>Nombre<input value={nameFilter} onChange={(event) => setNameFilter(event.target.value)} placeholder="Buscar chofer o ayudante"/></label><label>Vehículo<select value={vehicleFilter} onChange={(event) => setVehicleFilter(event.target.value)}><option value="">Todos</option>{Array.from(new Set(trips.map((trip) => trip.vehicle))).sort().map((item) => <option key={item}>{item}</option>)}</select></label></div>
     <section className="metrics bonus-metrics"><article><span className="metric-icon">₲</span><div><small>Bonificación del mes</small><strong>{money.format(driverTotal + helperTotal)}</strong><em>{monthLabel(month)}</em></div></article><article><span className="metric-icon positive">♙</span><div><small>Choferes</small><strong>{money.format(driverTotal)}</strong><em>{shownEntries.filter((entry) => entry.personType === "Chofer").length} evaluados</em></div></article><article><span className="metric-icon neutral">♧</span><div><small>Ayudantes</small><strong>{money.format(helperTotal)}</strong><em>{shownEntries.filter((entry) => entry.personType === "Ayudante").length} evaluados</em></div></article></section>
-    {view === "monthly" && <section className="table-card bonus-card"><div className="bonus-section-title"><div><p className="eyebrow">Detalle mensual</p><h3>{monthLabel(month)}</h3></div><strong>{closed ? "Histórico cerrado" : "En evaluación"}</strong></div><div className="table-scroll"><table className="bonus-table"><thead><tr><th>Beneficiario</th><th>Categoría</th><th>Viajes</th><th>Consumo / meta</th><th>Descarga</th><th>Sin devolución</th><th>Promedio</th><th>Total</th><th>Informe</th></tr></thead><tbody>{shownEntries.map((entry) => <tr key={`${entry.personType}-${entry.name}`}><td><strong>{entry.name}</strong><small>{entry.personType}{entry.driver ? ` · Chofer: ${entry.driver}` : ""} · {entry.vehicles}</small></td><td><span className="status-badge">{entry.category}</span></td><td>{entry.trips}</td><td>{entry.personType === "Chofer" ? <><strong>{entry.consumption ? `${entry.consumption.toFixed(2)} km/L` : "Sin ciclo"}</strong><small>Meta {entry.target ? entry.target.toFixed(2) : "pendiente"}</small></> : "No aplica"}</td><td><strong>{money.format(entry.unloadingBonus)}</strong><small>{entry.unloadingMet ? "Cumplido" : "No cumplido"}</small></td><td><label className="bonus-check"><input type="checkbox" checked={entry.damageMet} disabled={readOnly || Boolean(closed)} onChange={(event) => updateDamage(entry, event.target.checked)}/><span>{entry.damageMet ? money.format(entry.damageBonus) : "Pendiente"}</span></label></td><td>{entry.personType === "Chofer" ? <><strong>{money.format(entry.fuelBonus)}</strong><small>{Math.round(entry.fuelScore * 100)}% del máximo</small></> : "—"}</td><td><strong>{money.format(entry.total)}</strong></td><td>{entry.personType === "Chofer" ? <button className="report-action" onClick={() => setReportDriverName(entry.name)}>Ver informe</button> : "—"}</td></tr>)}{!shownEntries.length && <tr><td colSpan={9} className="no-results">No hay beneficiarios para los filtros seleccionados.</td></tr>}</tbody></table></div></section>}
+    {view === "monthly" && <section className="table-card bonus-card"><div className="bonus-section-title"><div><p className="eyebrow">Detalle mensual</p><h3>{monthLabel(month)}</h3></div><strong>{closed ? "Histórico cerrado" : "En evaluación"}</strong></div><div className="table-scroll"><table className="bonus-table"><thead><tr><th>Beneficiario</th><th>Categoría</th><th>Viajes</th><th>Consumo / meta</th><th>Descarga</th><th>Sin devolución</th><th>Promedio</th><th>Total</th><th>Informe</th></tr></thead><tbody>{shownEntries.map((entry) => <tr key={`${entry.personType}-${entry.name}`}><td><strong>{entry.name}</strong><small>{entry.personType}{entry.driver ? ` · Chofer: ${entry.driver}` : ""} · {entry.vehicles}</small></td><td><span className="status-badge">{entry.category}</span></td><td>{entry.trips}</td><td>{entry.personType === "Chofer" ? <><strong>{entry.consumption ? `${entry.consumption.toFixed(2)} km/L` : "Sin ciclo"}</strong><small>Meta {entry.target ? entry.target.toFixed(2) : "pendiente"}</small></> : "No aplica"}</td><td><strong>{money.format(entry.unloadingBonus)}</strong><small>{entry.unloadingMet ? "Cumplido" : "No cumplido"}</small></td><td><label className="bonus-check"><input type="checkbox" checked={entry.damageMet} disabled={readOnly || Boolean(closed) || Boolean(entry.manualEdited)} onChange={(event) => updateDamage(entry, event.target.checked)}/><span>{entry.damageMet ? money.format(entry.damageBonus) : "Pendiente"}</span></label></td><td>{entry.personType === "Chofer" ? <><strong>{money.format(entry.fuelBonus)}</strong><small>{Math.round(entry.fuelScore * 100)}% del máximo</small></> : "—"}</td><td><strong>{money.format(entry.total)}</strong>{entry.manualEdited && <small>Ajustado manualmente</small>}</td><td><div className="row-actions">{entry.personType === "Chofer" && <button className="report-action" onClick={() => setReportDriverName(entry.name)}>Ver informe</button>}{!readOnly && <button className="edit-action" onClick={() => setEditingBonus(entry)}>Editar</button>}</div></td></tr>)}{!shownEntries.length && <tr><td colSpan={9} className="no-results">No hay beneficiarios para los filtros seleccionados.</td></tr>}</tbody></table></div></section>}
     {view === "history" && <section className="table-card bonus-card"><div className="bonus-section-title"><div><p className="eyebrow">Histórico preservado</p><h3>Últimos 3 meses y acumulado</h3></div><strong>{historyGroups.length} beneficiarios</strong></div><div className="table-scroll"><table className="bonus-table"><thead><tr><th>Beneficiario</th><th>Categoría</th><th>Últimos meses</th><th>Promedio 3 meses</th><th>Mejor mes</th><th>Peor mes</th><th>Cumplimiento</th><th>Total acumulado</th></tr></thead><tbody>{historyGroups.map((item) => <tr key={`${item.personType}-${item.name}`}><td><strong>{item.name}</strong><small>{item.personType}</small></td><td>{item.category}</td><td>{item.last.map((record) => `${monthLabel(record.month)}: ${money.format(record.entry.total)}`).join(" · ")}</td><td><strong>{money.format(item.average)}</strong></td><td>{item.best ? `${monthLabel(item.best.month)} · ${money.format(item.best.entry.total)}` : "—"}</td><td>{item.worst ? `${monthLabel(item.worst.month)} · ${money.format(item.worst.entry.total)}` : "—"}</td><td><strong>{item.fulfillment.toFixed(0)}%</strong></td><td><strong>{money.format(item.total)}</strong></td></tr>)}</tbody></table></div></section>}
     {view === "ranking" && <section className="bonus-ranking-grid"><div className="table-card"><div className="bonus-section-title"><div><p className="eyebrow">Ranking</p><h3>Choferes</h3></div></div>{historyGroups.filter((item) => item.personType === "Chofer").map((item, index) => <div className="bonus-ranking-row" key={item.name}><b>{index + 1}</b><span><strong>{item.name}</strong><small>{item.category} · Promedio {money.format(item.average)}</small></span><em>{item.fulfillment.toFixed(0)}%</em></div>)}</div><div className="table-card"><div className="bonus-section-title"><div><p className="eyebrow">Ranking</p><h3>Ayudantes</h3></div></div>{historyGroups.filter((item) => item.personType === "Ayudante").map((item, index) => <div className="bonus-ranking-row" key={item.name}><b>{index + 1}</b><span><strong>{item.name}</strong><small>{item.category} · Promedio {money.format(item.average)}</small></span><em>{item.fulfillment.toFixed(0)}%</em></div>)}</div></section>}
+    {editingBonus && <div className="modal-backdrop" onMouseDown={() => setEditingBonus(null)}><div className="modal cost-modal" role="dialog" aria-modal="true" aria-labelledby="edit-bonus-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button className="close" onClick={() => setEditingBonus(null)} aria-label="Cerrar">×</button>
+      <p className="eyebrow">Ajuste de bonificación</p><h2 id="edit-bonus-title">Editar bonificación</h2>
+      <p className="modal-intro">{editingBonus.name} · {editingBonus.personType} · {monthLabel(month)}{closed ? " · Mes cerrado" : ""}</p>
+      <form onSubmit={saveEditedBonus}>
+        <label className="check-field"><input name="unloadingMet" type="checkbox" defaultChecked={editingBonus.unloadingMet}/><span>Descarga cumplida</span></label>
+        <label>Bonificación por descarga (₲)<input name="unloadingBonus" type="number" min="0" step="1" defaultValue={editingBonus.unloadingBonus}/></label>
+        <label className="check-field"><input name="damageMet" type="checkbox" defaultChecked={editingBonus.damageMet}/><span>Sin devolución por averías</span></label>
+        <label>Bonificación sin devolución (₲)<input name="damageBonus" type="number" min="0" step="1" defaultValue={editingBonus.damageBonus}/></label>
+        {editingBonus.personType === "Chofer" && <><label>Resultado de consumo (%)<input name="fuelScore" type="number" min="0" max="100" step="1" defaultValue={Math.round(editingBonus.fuelScore * 100)}/></label><label>Bonificación por consumo (₲)<input name="fuelBonus" type="number" min="0" step="1" defaultValue={editingBonus.fuelBonus}/></label></>}
+        <div className="form-actions"><button type="button" className="secondary" onClick={() => setEditingBonus(null)}>Cancelar</button><button type="submit" className="primary">Guardar cambios</button></div>
+      </form>
+    </div></div>}
     {reportDriver && <div className="modal-backdrop bonus-driver-preview" onMouseDown={() => setReportDriverName("")}><div className="trip-report" onMouseDown={(event) => event.stopPropagation()}><div className="report-toolbar"><button className="secondary" onClick={() => setReportDriverName("")}>Cerrar</button><button className="primary" onClick={() => printStandaloneReport(".bonus-driver-report", `Bonificación — ${reportDriver.name} — ${monthLabel(month)}`, "printing-bonus-report", "portrait")}><Icon name="report"/>Imprimir / PDF</button></div><article className="individual-bonus-report bonus-driver-report standalone-print-report">
       <header className="ibr-header"><h1>INFORME MENSUAL DE BONIFICACIONES</h1><div><span><strong>Periodo:</strong> {monthLabel(month)}</span><span><strong>Vehículo:</strong> {reportDriver.vehicles || "Sin vehículo"}</span><span><strong>Categoría:</strong> Ruta {reportDriver.category}</span></div></header>
       <section className="ibr-section"><h2><b>1</b> INDICADORES DEL VEHÍCULO</h2><div className="ibr-indicators"><table><tbody><tr><td>Cantidad de viajes</td><td>{reportDriver.trips}</td></tr><tr><td>Distancia recorrida</td><td>{reportDistance ? `${number.format(Math.round(reportDistance))} km` : "Sin ciclo cerrado"}</td></tr><tr><td>Combustible consumido</td><td>{reportLiters ? `${reportLiters.toFixed(1).replace(".", ",")} litros` : "Sin ciclo cerrado"}</td></tr><tr><td>Consumo histórico</td><td>{reportDriver.previousConsumption ? `${reportDriver.previousConsumption.toFixed(2)} km/L` : "Sin datos"}</td></tr><tr><td>Consumo del mes</td><td>{reportDriver.consumption ? `${reportDriver.consumption.toFixed(2)} km/L` : "Sin datos"}</td></tr></tbody></table><div className={`ibr-highlight ${reportEvolution !== null && reportEvolution < 0 ? "negative" : ""}`}>{reportEvolution === null ? "Aún no hay consumo histórico suficiente para calcular la evolución." : `El consumo ${reportEvolution >= 0 ? "mejoró" : "disminuyó"} ${Math.abs(reportEvolution).toFixed(1).replace(".", ",")}% respecto al histórico.`}</div></div></section>
