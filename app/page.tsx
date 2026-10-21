@@ -384,7 +384,9 @@ export default function Home() {
   })), [financialSeries, filteredTrips]);
   const deliveredOrdersMax = Math.max(1, ...deliveredOrdersSeries.map((item) => item.total));
   const deliveredOrdersTotal = deliveredOrdersSeries.reduce((sum, item) => sum + item.total, 0);
-  const chartX = (index: number) => financialSeries.length <= 1 ? 355 : 10 + index * 690 / (financialSeries.length - 1);
+  // Center every SVG point over the matching month label. The labels use an
+  // equal-width CSS grid, so their centers sit halfway through each column.
+  const chartX = (index: number) => financialSeries.length ? (index + 0.5) * 720 / financialSeries.length : 360;
   const chartY = (value: number) => 138 - Math.max(0, value) / chartScaleMax * 118;
   const chartPoints = (key: "fletes" | "costs" | "result") => financialSeries.map((item, index) => `${chartX(index)},${chartY(item[key])}`).join(" ");
   const resultAreaPoints = financialSeries.length ? `${chartX(0)},138 ${chartPoints("result")} ${chartX(financialSeries.length - 1)},138` : "";
