@@ -72,6 +72,20 @@ const invoiceTotal = (trip: Trip) => trip.orders.reduce((sum, order) => sum + or
 const freightValue = (trip: Trip, rates: FreightRates) => Math.round(trip.orders.reduce((sum, order) => sum + order.amount * rates[order.freightType] / 100, 0));
 const tripDistance = (trip: Trip) => trip.distanceSource && trip.distanceSource !== "Odómetro" ? Math.max(0, trip.estimatedKm ?? 0) : Math.max(0, trip.kmFinal - trip.kmInitial);
 const isEstimatedTrip = (trip: Trip) => Boolean(trip.distanceSource && trip.distanceSource !== "Odómetro");
+const monthKeyFromDate = (value: unknown) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 7);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    excelEpoch.setUTCDate(excelEpoch.getUTCDate() + value);
+    return excelEpoch.toISOString().slice(0, 7);
+  }
+  const raw = String(value ?? "").trim();
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T|\s|$)/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}`;
+  const local = raw.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})(?:\s|$)/);
+  if (local) return `${local[3]}-${local[2].padStart(2, "0")}`;
+  return "";
+};
 const tripConsumedFuel = (trip: Trip, entries: FuelEntry[]) => {
   if (!trip.fuelDataValidated) return 0;
   const reported = Number(trip.gpsConsumedLiters || 0);
@@ -325,10 +339,13 @@ export default function Home() {
   const fuelCost = useMemo(() => filteredTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0), [filteredTrips, fuelCycles]);
   const result = revenue - costs - fuelCost;
   const financialSeries = useMemo(() => {
-    const sourceDates = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date), ...filteredFuel.map((entry) => entry.date)].filter(Boolean).sort();
-    if (!sourceDates.length) return [];
+    const sourceMonths = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date), ...filteredFuel.map((entry) => entry.date)]
+      .map(monthKeyFromDate)
+      .filter(Boolean)
+      .sort();
+    if (!sourceMonths.length) return [];
     const currentMonth = new Date().toISOString().slice(0, 7);
-    const lastSourceMonth = sourceDates.at(-1)!.slice(0, 7);
+    const lastSourceMonth = sourceMonths.at(-1)!;
     const endMonth = filters.dateTo?.slice(0, 7) || (lastSourceMonth > currentMonth ? lastSourceMonth : currentMonth);
     const endCursor = new Date(`${endMonth}-01T12:00:00Z`);
     const earliestAllowed = new Date(endCursor);
@@ -346,7 +363,7 @@ export default function Home() {
       cursor.setUTCMonth(cursor.getUTCMonth() + 1);
     }
     return keys.map((key) => {
-      const matches = (date: string) => date.slice(0, 7) === key;
+      const matches = (date: string) => monthKeyFromDate(date) === key;
       const bucketTrips = filteredTrips.filter((trip) => matches(trip.startDate));
       const fletes = bucketTrips.reduce((sum, trip) => sum + freightValue(trip, freightRates), 0);
       const directCosts = filteredCosts.filter((cost) => matches(cost.date)).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
