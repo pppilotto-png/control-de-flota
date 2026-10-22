@@ -382,6 +382,7 @@ export default function Home() {
   })), [financialSeries, filteredTrips]);
   const deliveredOrdersMax = Math.max(1, ...deliveredOrdersSeries.map((item) => item.total));
   const deliveredOrdersTotal = deliveredOrdersSeries.reduce((sum, item) => sum + item.total, 0);
+  const financialCompositionMax = Math.max(1, ...financialSeries.map((item) => Math.max(item.fletes, item.costs + Math.max(0, item.result))));
   const isReadOnly = session.role === "Consulta";
   const visibleNavItems = navItems.filter(([key]) => session.role === "Administrador" ? true :
     session.role === "Consulta" ? key !== "settings" :
@@ -690,6 +691,31 @@ export default function Home() {
           <article><span className="metric-icon">▱</span><div><small>Viajes activos</small><strong>{filteredTrips.filter((trip) => trip.status !== "Finalizado").length}</strong><em>Control por kilometraje</em></div></article>
         </section>
         <section className="financial-card monthly-financial-card financial-summary-only"><div className="summary"><div className="financial-title"><div><p className="eyebrow">Evolución financiera</p><h2>Resumen mensual</h2></div><span className="monthly-badge">Mensual</span></div><div className="financial-metrics"><p><span><i className="dot revenue"/>Fletes</span><strong>{money.format(revenue)}</strong></p><p><span><i className="dot costs"/>Costos</span><strong>{money.format(costs + fuelCost)}</strong></p><p><span><i className="dot profit"/>Resultado</span><strong className={result >= 0 ? "green" : "negative-value"}>{money.format(result)}</strong></p></div></div></section>
+        <section className="financial-composition-card" aria-label="Composición mensual de la facturación">
+          <div className="financial-composition-heading">
+            <div><p className="eyebrow">Evolución financiera</p><h2>Composición de la facturación</h2><small>Costos y resultado dentro del total de fletes de cada mes</small></div>
+            <div className="financial-composition-legend"><span><i className="composition-dot costs"/>Costos</span><span><i className="composition-dot result"/>Resultado</span></div>
+          </div>
+          <div className="financial-composition-scroll"><div className="financial-composition-chart" style={financialSeries.length > 8 ? { minWidth: `${financialSeries.length * 110}px` } : undefined}>
+            {financialSeries.map((item, index) => {
+              const positiveResult = Math.max(0, item.result);
+              const stackedTotal = item.costs + positiveResult;
+              const costShare = stackedTotal ? item.costs / stackedTotal * 100 : 0;
+              const resultShare = stackedTotal ? positiveResult / stackedTotal * 100 : 0;
+              const barTotal = Math.max(item.fletes, stackedTotal);
+              return <div className={`financial-composition-column ${index === financialSeries.length - 1 ? "latest" : ""}`} key={item.key}>
+                <strong>{money.format(item.fletes)}</strong>
+                <div className="financial-composition-track" title={`${item.label}: Fletes ${money.format(item.fletes)}, Costos ${money.format(item.costs)}, Resultado ${money.format(item.result)}`}>
+                  <div className="financial-composition-stack" style={{ height: `${barTotal ? Math.max(5, barTotal / financialCompositionMax * 100) : 0}%` }}>
+                    <span className="financial-composition-result" style={{ height: `${resultShare}%` }} aria-label={`Resultado: ${money.format(item.result)}`}/>
+                    <span className="financial-composition-costs" style={{ height: `${costShare}%` }} aria-label={`Costos: ${money.format(item.costs)}`}/>
+                  </div>
+                </div>
+                <small>{item.label}</small>
+              </div>;
+            })}
+          </div></div>
+        </section>
         <section className="delivered-orders-card" aria-label="Pedidos entregados por mes">
           <div className="delivered-orders-heading"><div><p className="eyebrow">Operación concluida</p><h2>Pedidos entregados por mes</h2><small>Pedidos de viajes finalizados, agrupados por la fecha final del viaje</small></div><div><strong>{number.format(deliveredOrdersTotal)}</strong><span>Total del periodo</span></div></div>
           <div className="delivered-orders-scroll"><div className="delivered-orders-chart" style={deliveredOrdersSeries.length > 8 ? { minWidth: `${deliveredOrdersSeries.length * 88}px` } : undefined}>
