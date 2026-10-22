@@ -191,13 +191,14 @@ function FinancialSankey({ revenue, result, items }: { revenue: number; result: 
   const sourceResultY = sourceY + costFlowHeight + resultFlowHeight / 2;
   const visibleItems = items.filter((item) => item.value > 0);
   const categoryLayout = visibleItems.map((item) => ({ ...item, flowHeight: item.value * scale, nodeHeight: Math.max(7, item.value * scale) }));
-  const categoryGap = visibleItems.length > 1 ? 11 : 0;
-  const categoryContentHeight = categoryLayout.reduce((sum, item) => sum + item.nodeHeight, 0) + Math.max(0, visibleItems.length - 1) * categoryGap;
-  let categoryCursor = Math.max(28, (340 - categoryContentHeight) / 2);
+  const categoryRowHeight = 46;
+  const categoryContentHeight = visibleItems.length * categoryRowHeight;
+  let categoryCursor = Math.max(18, (390 - categoryContentHeight) / 2);
   let costCursor = costY;
   const positionedCategories = categoryLayout.map((item) => {
-    const positioned = { ...item, y: categoryCursor, sourceY: costCursor + item.flowHeight / 2 };
-    categoryCursor += item.nodeHeight + categoryGap;
+    const nodeY = categoryCursor + (categoryRowHeight - item.nodeHeight) / 2;
+    const positioned = { ...item, y: nodeY, sourceY: costCursor + item.flowHeight / 2 };
+    categoryCursor += categoryRowHeight;
     costCursor += item.flowHeight;
     return positioned;
   });
