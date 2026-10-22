@@ -173,6 +173,59 @@ function Icon({ name }: { name: string }) {
   return <svg {...common}><path d="M12 3v18M5 12h14"/></svg>;
 }
 
+function FinancialSankey({ revenue, result, items }: { revenue: number; result: number; items: { key: string; label: string; value: number; color: string }[] }) {
+  const totalCosts = items.reduce((sum, item) => sum + item.value, 0);
+  const positiveResult = Math.max(0, result);
+  const profitability = revenue ? result / revenue * 100 : 0;
+  const flowBase = Math.max(revenue, totalCosts + positiveResult, 1);
+  const scale = 210 / flowBase;
+  const sourceHeight = revenue ? Math.max(10, revenue * scale) : 0;
+  const costFlowHeight = totalCosts ? Math.max(4, totalCosts * scale) : 0;
+  const resultFlowHeight = positiveResult ? Math.max(4, positiveResult * scale) : 0;
+  const costNodeHeight = totalCosts ? Math.max(9, totalCosts * scale) : 0;
+  const resultNodeHeight = positiveResult ? Math.max(9, positiveResult * scale) : 0;
+  const sourceY = 78 + (210 - sourceHeight) / 2;
+  const costY = 48;
+  const resultY = costY + costNodeHeight + 34;
+  const sourceCostY = sourceY + costFlowHeight / 2;
+  const sourceResultY = sourceY + costFlowHeight + resultFlowHeight / 2;
+  const visibleItems = items.filter((item) => item.value > 0);
+  const categoryLayout = visibleItems.map((item) => ({ ...item, flowHeight: item.value * scale, nodeHeight: Math.max(7, item.value * scale) }));
+  const categoryGap = visibleItems.length > 1 ? 11 : 0;
+  const categoryContentHeight = categoryLayout.reduce((sum, item) => sum + item.nodeHeight, 0) + Math.max(0, visibleItems.length - 1) * categoryGap;
+  let categoryCursor = Math.max(28, (340 - categoryContentHeight) / 2);
+  let costCursor = costY;
+  const positionedCategories = categoryLayout.map((item) => {
+    const positioned = { ...item, y: categoryCursor, sourceY: costCursor + item.flowHeight / 2 };
+    categoryCursor += item.nodeHeight + categoryGap;
+    costCursor += item.flowHeight;
+    return positioned;
+  });
+  const curve = (x1: number, y1: number, x2: number, y2: number) => "M " + x1 + " " + y1 + " C " + (x1 + x2) / 2 + " " + y1 + ", " + (x1 + x2) / 2 + " " + y2 + ", " + x2 + " " + y2;
+
+  return <section className="financial-flow-card" aria-label="Flujo financiero de la transportadora">
+    <div className="financial-flow-heading"><div><p className="eyebrow">Evolución financiera</p><h2>Flujo financiero de la transportadora</h2><small>Origen de los fletes y distribución real de los costos según los filtros activos</small></div><span>Actualización automática</span></div>
+    <div className="financial-flow-kpis">
+      <article><small>Fletes</small><strong>{money.format(revenue)}</strong></article>
+      <article><small>Costos totales</small><strong>{money.format(totalCosts)}</strong></article>
+      <article className={result >= 0 ? "positive" : "negative"}><small>{result >= 0 ? "Resultado operacional" : "Pérdida operacional"}</small><strong>{money.format(result)}</strong></article>
+      <article className={profitability >= 0 ? "positive" : "negative"}><small>Rentabilidad</small><strong>{profitability.toFixed(1).replace(".", ",")}%</strong></article>
+    </div>
+    {revenue || totalCosts ? <div className="financial-sankey-scroll"><svg className="financial-sankey" viewBox="0 0 1000 390" role="img" aria-label="Fletes distribuidos entre costos, resultado y categorías de costos">
+      <path className="sankey-stream sankey-cost-flow" d={curve(172, sourceCostY, 410, costY + costNodeHeight / 2)} strokeWidth={costFlowHeight}/>
+      {positiveResult > 0 && <path className="sankey-stream sankey-result-flow" d={curve(172, sourceResultY, 410, resultY + resultNodeHeight / 2)} strokeWidth={resultFlowHeight}/>}
+      {positionedCategories.map((item) => <g key={item.key}><path className="sankey-stream" d={curve(432, item.sourceY, 748, item.y + item.nodeHeight / 2)} stroke={item.color} strokeWidth={Math.max(3, item.flowHeight)}/><title>{item.label + ": " + money.format(item.value)}</title></g>)}
+      <rect className="sankey-node sankey-source-node" x="150" y={sourceY} width="22" height={sourceHeight} rx="5"><title>{"Fletes: " + money.format(revenue)}</title></rect>
+      {totalCosts > 0 && <rect className="sankey-node sankey-cost-node" x="410" y={costY} width="22" height={costNodeHeight} rx="5"><title>{"Costos totales: " + money.format(totalCosts)}</title></rect>}
+      {positiveResult > 0 && <rect className="sankey-node sankey-result-node" x="410" y={resultY} width="22" height={resultNodeHeight} rx="5"><title>{"Resultado operacional: " + money.format(result)}</title></rect>}
+      {positionedCategories.map((item) => <g key={"node-" + item.key}><rect className="sankey-node" x="748" y={item.y} width="22" height={item.nodeHeight} rx="4" fill={item.color}><title>{item.label + ": " + money.format(item.value)}</title></rect><text className="sankey-category-label" x="784" y={item.y + item.nodeHeight / 2 - 2}>{item.label}</text><text className="sankey-category-value" x="784" y={item.y + item.nodeHeight / 2 + 14}>{money.format(item.value)}</text></g>)}
+      <text className="sankey-main-label" x="136" y={sourceY + sourceHeight / 2 - 3} textAnchor="end">Valor de los fletes</text><text className="sankey-main-value" x="136" y={sourceY + sourceHeight / 2 + 15} textAnchor="end">{money.format(revenue)}</text>
+      {totalCosts > 0 && <><text className="sankey-main-label" x="421" y={costY - 16} textAnchor="middle">Costos totales</text><text className="sankey-main-value" x="421" y={costY - 1} textAnchor="middle">{money.format(totalCosts)}</text></>}
+      {positiveResult > 0 && <><text className="sankey-main-label" x="421" y={resultY + resultNodeHeight + 19} textAnchor="middle">Resultado operacional</text><text className="sankey-main-value" x="421" y={resultY + resultNodeHeight + 35} textAnchor="middle">{money.format(result)}</text></>}
+    </svg></div> : <div className="financial-flow-empty">No hay datos financieros para los filtros seleccionados.</div>}
+  </section>;
+}
+
 export default function Home() {
   const [active, setActive] = useState("dashboard");
   const [fleetTab, setFleetTab] = useState<"vehicles" | "documents">("vehicles");
@@ -338,6 +391,18 @@ export default function Home() {
   const costs = useMemo(() => filteredCosts.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0), [filteredCosts]);
   const fuelCost = useMemo(() => filteredTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0), [filteredTrips, fuelCycles]);
   const result = revenue - costs - fuelCost;
+  const financialCostBreakdown = useMemo(() => {
+    const valueFor = (type: CostType) => filteredCosts.filter((cost) => cost.type === type).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
+    return [
+      { key: "fuel", label: "Combustible", value: fuelCost, color: "var(--sankey-fuel)" },
+      { key: "consumption", label: "Consumición", value: valueFor("Consumición"), color: "var(--sankey-consumption)" },
+      { key: "toll", label: "Peajes", value: valueFor("Peaje"), color: "var(--sankey-toll)" },
+      { key: "tape", label: "Tape", value: valueFor("Tape"), color: "var(--sankey-tape)" },
+      { key: "lodging", label: "Hospedaje", value: valueFor("Hospedaje"), color: "var(--sankey-lodging)" },
+      { key: "maintenance", label: "Reparo / Mantenimiento", value: valueFor("Reparo/Mantenimiento"), color: "var(--sankey-maintenance)" },
+      { key: "other", label: "Otros", value: valueFor("Otros"), color: "var(--sankey-other)" },
+    ].filter((item) => item.value > 0);
+  }, [filteredCosts, fuelCost]);
   const financialSeries = useMemo(() => {
     const sourceMonths = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date), ...filteredFuel.map((entry) => entry.date)]
       .map(monthKeyFromDate)
@@ -382,7 +447,6 @@ export default function Home() {
   })), [financialSeries, filteredTrips]);
   const deliveredOrdersMax = Math.max(1, ...deliveredOrdersSeries.map((item) => item.total));
   const deliveredOrdersTotal = deliveredOrdersSeries.reduce((sum, item) => sum + item.total, 0);
-  const financialCompositionMax = Math.max(1, ...financialSeries.map((item) => Math.max(item.fletes, item.costs + Math.max(0, item.result))));
   const isReadOnly = session.role === "Consulta";
   const visibleNavItems = navItems.filter(([key]) => session.role === "Administrador" ? true :
     session.role === "Consulta" ? key !== "settings" :
@@ -690,32 +754,7 @@ export default function Home() {
           <article><span className="metric-icon positive">↗</span><div><small>Resultado</small><strong className="green">{money.format(result)}</strong><em>Después de costos y combustible</em></div></article>
           <article><span className="metric-icon">▱</span><div><small>Viajes activos</small><strong>{filteredTrips.filter((trip) => trip.status !== "Finalizado").length}</strong><em>Control por kilometraje</em></div></article>
         </section>
-        <section className="financial-card monthly-financial-card financial-summary-only"><div className="summary"><div className="financial-title"><div><p className="eyebrow">Evolución financiera</p><h2>Resumen mensual</h2></div><span className="monthly-badge">Mensual</span></div><div className="financial-metrics"><p><span><i className="dot revenue"/>Fletes</span><strong>{money.format(revenue)}</strong></p><p><span><i className="dot costs"/>Costos</span><strong>{money.format(costs + fuelCost)}</strong></p><p><span><i className="dot profit"/>Resultado</span><strong className={result >= 0 ? "green" : "negative-value"}>{money.format(result)}</strong></p></div></div></section>
-        <section className="financial-composition-card" aria-label="Composición mensual de la facturación">
-          <div className="financial-composition-heading">
-            <div><p className="eyebrow">Evolución financiera</p><h2>Composición de la facturación</h2><small>Costos y resultado dentro del total de fletes de cada mes</small></div>
-            <div className="financial-composition-legend"><span><i className="composition-dot costs"/>Costos</span><span><i className="composition-dot result"/>Resultado</span></div>
-          </div>
-          <div className="financial-composition-scroll"><div className="financial-composition-chart" style={financialSeries.length > 8 ? { minWidth: `${financialSeries.length * 110}px` } : undefined}>
-            {financialSeries.map((item, index) => {
-              const positiveResult = Math.max(0, item.result);
-              const stackedTotal = item.costs + positiveResult;
-              const costShare = stackedTotal ? item.costs / stackedTotal * 100 : 0;
-              const resultShare = stackedTotal ? positiveResult / stackedTotal * 100 : 0;
-              const barTotal = Math.max(item.fletes, stackedTotal);
-              return <div className={`financial-composition-column ${index === financialSeries.length - 1 ? "latest" : ""}`} key={item.key}>
-                <strong>{money.format(item.fletes)}</strong>
-                <div className="financial-composition-track" title={`${item.label}: Fletes ${money.format(item.fletes)}, Costos ${money.format(item.costs)}, Resultado ${money.format(item.result)}`}>
-                  <div className="financial-composition-stack" style={{ height: `${barTotal ? Math.max(5, barTotal / financialCompositionMax * 100) : 0}%` }}>
-                    <span className="financial-composition-result" style={{ height: `${resultShare}%` }} aria-label={`Resultado: ${money.format(item.result)}`}/>
-                    <span className="financial-composition-costs" style={{ height: `${costShare}%` }} aria-label={`Costos: ${money.format(item.costs)}`}/>
-                  </div>
-                </div>
-                <small>{item.label}</small>
-              </div>;
-            })}
-          </div></div>
-        </section>
+        <FinancialSankey revenue={revenue} result={result} items={financialCostBreakdown}/>
         <section className="delivered-orders-card" aria-label="Pedidos entregados por mes">
           <div className="delivered-orders-heading"><div><p className="eyebrow">Operación concluida</p><h2>Pedidos entregados por mes</h2><small>Pedidos de viajes finalizados, agrupados por la fecha final del viaje</small></div><div><strong>{number.format(deliveredOrdersTotal)}</strong><span>Total del periodo</span></div></div>
           <div className="delivered-orders-scroll"><div className="delivered-orders-chart" style={deliveredOrdersSeries.length > 8 ? { minWidth: `${deliveredOrdersSeries.length * 88}px` } : undefined}>
