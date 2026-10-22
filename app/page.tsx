@@ -177,6 +177,9 @@ function FinancialSankey({ revenue, result, items }: { revenue: number; result: 
   const totalCosts = items.reduce((sum, item) => sum + item.value, 0);
   const positiveResult = Math.max(0, result);
   const profitability = revenue ? result / revenue * 100 : 0;
+  const costPercentage = revenue ? totalCosts / revenue * 100 : 0;
+  const resultPercentage = revenue ? positiveResult / revenue * 100 : 0;
+  const percentLabel = (value: number) => value.toFixed(1).replace(".", ",") + "%";
   const flowBase = Math.max(revenue, totalCosts + positiveResult, 1);
   const scale = 210 / flowBase;
   const sourceHeight = revenue ? Math.max(10, revenue * scale) : 0;
@@ -208,9 +211,9 @@ function FinancialSankey({ revenue, result, items }: { revenue: number; result: 
     <div className="financial-flow-heading"><div><p className="eyebrow">Evolución financiera</p><h2>Flujo financiero de la transportadora</h2><small>Origen de los fletes y distribución real de los costos según los filtros activos</small></div><span>Actualización automática</span></div>
     <div className="financial-flow-kpis">
       <article><small>Fletes</small><strong>{money.format(revenue)}</strong></article>
-      <article><small>Costos totales</small><strong>{money.format(totalCosts)}</strong></article>
-      <article className={result >= 0 ? "positive" : "negative"}><small>{result >= 0 ? "Resultado operacional" : "Pérdida operacional"}</small><strong>{money.format(result)}</strong></article>
-      <article className={profitability >= 0 ? "positive" : "negative"}><small>Rentabilidad</small><strong>{profitability.toFixed(1).replace(".", ",")}%</strong></article>
+      <article><small>Costos totales · {percentLabel(costPercentage)} de los fletes</small><strong>{money.format(totalCosts)}</strong></article>
+      <article className={result >= 0 ? "positive" : "negative"}><small>{result >= 0 ? "Resultado operacional · " + percentLabel(resultPercentage) + " de los fletes" : "Pérdida operacional · " + percentLabel(Math.abs(profitability)) + " de los fletes"}</small><strong>{money.format(result)}</strong></article>
+      <article className={profitability >= 0 ? "positive" : "negative"}><small>Rentabilidad</small><strong>{percentLabel(profitability)}</strong></article>
     </div>
     {revenue || totalCosts ? <div className="financial-sankey-scroll"><svg className="financial-sankey" viewBox="0 0 1000 390" role="img" aria-label="Fletes distribuidos entre costos, resultado y categorías de costos">
       <path className="sankey-stream sankey-cost-flow" d={curve(172, sourceCostY, 410, costY + costNodeHeight / 2)} strokeWidth={costFlowHeight}/>
@@ -221,8 +224,8 @@ function FinancialSankey({ revenue, result, items }: { revenue: number; result: 
       {positiveResult > 0 && <rect className="sankey-node sankey-result-node" x="410" y={resultY} width="22" height={resultNodeHeight} rx="5"><title>{"Resultado operacional: " + money.format(result)}</title></rect>}
       {positionedCategories.map((item) => <g key={"node-" + item.key}><rect className="sankey-node" x="748" y={item.y} width="22" height={item.nodeHeight} rx="4" fill={item.color}><title>{item.label + ": " + money.format(item.value)}</title></rect><text className="sankey-category-label" x="784" y={item.y + item.nodeHeight / 2 - 2}>{item.label}</text><text className="sankey-category-value" x="784" y={item.y + item.nodeHeight / 2 + 14}>{money.format(item.value)}</text></g>)}
       <text className="sankey-main-label" x="136" y={sourceY + sourceHeight / 2 - 3} textAnchor="end">Valor de los fletes</text><text className="sankey-main-value" x="136" y={sourceY + sourceHeight / 2 + 15} textAnchor="end">{money.format(revenue)}</text>
-      {totalCosts > 0 && <><text className="sankey-main-label" x="421" y={costY - 16} textAnchor="middle">Costos totales</text><text className="sankey-main-value" x="421" y={costY - 1} textAnchor="middle">{money.format(totalCosts)}</text></>}
-      {positiveResult > 0 && <><text className="sankey-main-label" x="421" y={resultY + resultNodeHeight + 19} textAnchor="middle">Resultado operacional</text><text className="sankey-main-value" x="421" y={resultY + resultNodeHeight + 35} textAnchor="middle">{money.format(result)}</text></>}
+      {totalCosts > 0 && <><text className="sankey-main-label" x="421" y={costY - 16} textAnchor="middle">{"Costos totales · " + percentLabel(costPercentage)}</text><text className="sankey-main-value" x="421" y={costY - 1} textAnchor="middle">{money.format(totalCosts)}</text></>}
+      {positiveResult > 0 && <><text className="sankey-main-label" x="421" y={resultY + resultNodeHeight + 19} textAnchor="middle">{"Resultado operacional · " + percentLabel(resultPercentage)}</text><text className="sankey-main-value" x="421" y={resultY + resultNodeHeight + 35} textAnchor="middle">{money.format(result)}</text></>}
     </svg></div> : <div className="financial-flow-empty">No hay datos financieros para los filtros seleccionados.</div>}
   </section>;
 }
