@@ -389,26 +389,42 @@ export default function Home() {
   const filteredTripIds = useMemo(() => new Set(filteredTrips.map((trip) => trip.id)), [filteredTrips]);
   const filteredCosts = useMemo(() => tripCosts.filter((cost) => filteredTripIds.has(cost.tripId) && (!filters.dateFrom || cost.date >= filters.dateFrom) && (!filters.dateTo || cost.date <= filters.dateTo)), [tripCosts, filteredTripIds, filters.dateFrom, filters.dateTo]);
   const filteredFuel = useMemo(() => fuelEntries.filter((entry) => (!filters.dateFrom || entry.date >= filters.dateFrom) && (!filters.dateTo || entry.date <= filters.dateTo) && (!filters.vehicle || entry.vehicle === filters.vehicle)), [fuelEntries, filters.dateFrom, filters.dateTo, filters.vehicle]);
+  const filteredMaintenance = useMemo(() => maintenance.filter((item) => {
+    const vehicle = vehicles.find((candidate) => candidate.plate === item.vehicle);
+    const matchesDriver = !filters.driver || trips.some((trip) => trip.vehicle === item.vehicle && trip.driver === filters.driver);
+    const matchesStatus = !filters.status || trips.some((trip) => trip.vehicle === item.vehicle && trip.status === filters.status);
+    return (!filters.dateFrom || item.date >= filters.dateFrom) &&
+      (!filters.dateTo || item.date <= filters.dateTo) &&
+      (!filters.vehicle || item.vehicle === filters.vehicle) &&
+      (!filters.branch || vehicle?.branch === filters.branch) &&
+      matchesDriver &&
+      matchesStatus;
+  }), [maintenance, vehicles, trips, filters]);
   const fuelCycles = useMemo(() => calculateFuelCycles(fuelEntries, trips, vehicles), [fuelEntries, trips, vehicles]);
   const revenue = useMemo(() => filteredTrips.reduce((sum, trip) => sum + freightValue(trip, freightRates), 0), [filteredTrips, freightRates]);
   const invoiced = useMemo(() => filteredTrips.reduce((sum, trip) => sum + invoiceTotal(trip), 0), [filteredTrips]);
-  const costs = useMemo(() => filteredCosts.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0), [filteredCosts]);
+  const tripCostsTotal = useMemo(() => filteredCosts.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0), [filteredCosts]);
+  const fleetCostsTotal = useMemo(() => filteredMaintenance.reduce((sum, item) => sum + item.value, 0), [filteredMaintenance]);
+  const costs = tripCostsTotal + fleetCostsTotal;
   const fuelCost = useMemo(() => filteredTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0), [filteredTrips, fuelCycles]);
   const result = revenue - costs - fuelCost;
   const financialCostBreakdown = useMemo(() => {
     const valueFor = (type: CostType) => filteredCosts.filter((cost) => cost.type === type).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
+    const fleetServices = filteredMaintenance.filter((item) => item.type !== "Documentación").reduce((sum, item) => sum + item.value, 0);
+    const fleetDocuments = filteredMaintenance.filter((item) => item.type === "Documentación").reduce((sum, item) => sum + item.value, 0);
     return [
       { key: "fuel", label: "Combustible", value: fuelCost, color: "var(--sankey-fuel)" },
       { key: "consumption", label: "Consumición", value: valueFor("Consumición"), color: "var(--sankey-consumption)" },
       { key: "toll", label: "Peajes", value: valueFor("Peaje"), color: "var(--sankey-toll)" },
       { key: "tape", label: "Tape", value: valueFor("Tape"), color: "var(--sankey-tape)" },
       { key: "lodging", label: "Hospedaje", value: valueFor("Hospedaje"), color: "var(--sankey-lodging)" },
-      { key: "maintenance", label: "Reparo / Mantenimiento", value: valueFor("Reparo/Mantenimiento"), color: "var(--sankey-maintenance)" },
+      { key: "maintenance", label: "Servicios / Mantenimiento", value: valueFor("Reparo/Mantenimiento") + fleetServices, color: "var(--sankey-maintenance)" },
+      { key: "documents", label: "Documentación de flota", value: fleetDocuments, color: "#8b5cf6" },
       { key: "other", label: "Otros", value: valueFor("Otros"), color: "var(--sankey-other)" },
     ].filter((item) => item.value > 0);
-  }, [filteredCosts, fuelCost]);
+  }, [filteredCosts, filteredMaintenance, fuelCost]);
   const financialSeries = useMemo(() => {
-    const sourceMonths = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date), ...filteredFuel.map((entry) => entry.date)]
+    const sourceMonths = [...filteredTrips.map((trip) => trip.startDate), ...filteredCosts.map((cost) => cost.date), ...filteredFuel.map((entry) => entry.date), ...filteredMaintenance.map((item) => item.date)]
       .map(monthKeyFromDate)
       .filter(Boolean)
       .sort();
@@ -436,12 +452,13 @@ export default function Home() {
       const bucketTrips = filteredTrips.filter((trip) => matches(trip.startDate));
       const fletes = bucketTrips.reduce((sum, trip) => sum + freightValue(trip, freightRates), 0);
       const directCosts = filteredCosts.filter((cost) => matches(cost.date)).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
+      const fleetCosts = filteredMaintenance.filter((item) => matches(item.date)).reduce((sum, item) => sum + item.value, 0);
       const fuel = bucketTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0);
-      const totalCosts = directCosts + fuel;
+      const totalCosts = directCosts + fleetCosts + fuel;
       const label = new Intl.DateTimeFormat("es-PY", { month: "short", year: "2-digit" }).format(new Date(`${key}-01T12:00:00`)).replace(".", "");
       return { key, label, fletes, costs: totalCosts, result: fletes - totalCosts };
     });
-  }, [filteredTrips, filteredCosts, filteredFuel, freightRates, fuelCycles, filters.dateFrom, filters.dateTo]);
+  }, [filteredTrips, filteredCosts, filteredFuel, filteredMaintenance, freightRates, fuelCycles, filters.dateFrom, filters.dateTo]);
   const deliveredOrdersSeries = useMemo(() => financialSeries.map(({ key, label }) => ({
     key,
     label,
@@ -755,7 +772,7 @@ export default function Home() {
         <section className="metrics" aria-label="Indicadores principales">
           <article><span className="metric-icon">₲</span><div><small>Fletes</small><strong>{money.format(revenue)}</strong><em>Calculados sobre facturas</em></div></article>
           <article><span className="metric-icon neutral">▤</span><div><small>Total facturado</small><strong>{money.format(invoiced)}</strong><em className="muted">{filteredTrips.reduce((s,t) => s + t.orders.length, 0)} pedidos registrados</em></div></article>
-          <article><span className="metric-icon positive">↗</span><div><small>Resultado</small><strong className="green">{money.format(result)}</strong><em>Después de costos y combustible</em></div></article>
+          <article><span className="metric-icon positive">↗</span><div><small>Resultado</small><strong className="green">{money.format(result)}</strong><em>Después de costos, flota y combustible</em></div></article>
           <article><span className="metric-icon">▱</span><div><small>Viajes activos</small><strong>{filteredTrips.filter((trip) => trip.status !== "Finalizado").length}</strong><em>Control por kilometraje</em></div></article>
         </section>
         <FinancialSankey revenue={revenue} result={result} items={financialCostBreakdown}/>
