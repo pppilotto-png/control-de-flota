@@ -95,14 +95,24 @@ const tripConsumedFuel = (trip: Trip, entries: FuelEntry[]) => {
   return Math.max(0, trip.fuelInitialLevel + refueled - trip.fuelFinalLevel);
 };
 
+const selectTripFuelEntries = (trip: Trip, entries: FuelEntry[]) => {
+  const linkedEntries = entries.filter((entry) => entry.tripId === trip.id);
+  if (linkedEntries.length) return { entries: linkedEntries, source: "linked" as const };
+  const referenceDate = trip.endDate || trip.startDate;
+  const latestEntry = entries
+    .filter((entry) => entry.vehicle === trip.vehicle && (!referenceDate || entry.date <= referenceDate))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)[0];
+  return latestEntry ? { entries: [latestEntry], source: "latest" as const } : { entries: [], source: "none" as const };
+};
+
 const tripFuelValue = (trip: Trip, entries: FuelEntry[], cycleValue = 0) => {
   const consumedLiters = tripConsumedFuel(trip, entries);
-  const assignedEntries = entries.filter((entry) => entry.tripId === trip.id);
-  const assignedLiters = assignedEntries.reduce((sum, entry) => sum + entry.liters, 0);
-  const assignedTotal = assignedEntries.reduce((sum, entry) => sum + entry.totalValue, 0);
-  const assignedPrice = assignedLiters > 0 ? assignedTotal / assignedLiters : 0;
-  const assignedValue = consumedLiters > 0 && assignedPrice > 0 ? Math.round(consumedLiters * assignedPrice) : 0;
-  return assignedValue > 0 ? assignedValue : cycleValue;
+  const selected = selectTripFuelEntries(trip, entries);
+  const selectedLiters = selected.entries.reduce((sum, entry) => sum + entry.liters, 0);
+  const selectedTotal = selected.entries.reduce((sum, entry) => sum + (entry.totalValue || entry.liters * entry.pricePerLiter), 0);
+  const selectedPrice = selectedLiters > 0 ? selectedTotal / selectedLiters : 0;
+  const selectedValue = consumedLiters > 0 && selectedPrice > 0 ? Math.round(consumedLiters * selectedPrice) : 0;
+  return selectedValue > 0 ? selectedValue : cycleValue;
 };
 
 const calculationMethodFor = (vehicle?: Vehicle): FuelCalculationMethod => vehicle?.fuelCalculationMethod ?? (vehicle?.odometerStatus === "Averiado" ? "GPS / balance del tanque" : "Hodómetro / tanque lleno");
@@ -1009,10 +1019,12 @@ function TripReport({ trip, rates, costs, fuelEntries, onClose }: {
   const totalCosts = costs.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
   const km = tripDistance(trip);
   const actualConsumedLiters = tripConsumedFuel(trip, fuelEntries);
-  const assignedFuelEntries = fuelEntries.filter((entry) => entry.tripId === trip.id);
+  const fuelSelection = selectTripFuelEntries(trip, fuelEntries);
+  const assignedFuelEntries = fuelSelection.entries;
   const assignedFuelLiters = assignedFuelEntries.reduce((sum, entry) => sum + entry.liters, 0);
-  const assignedFuelTotalValue = assignedFuelEntries.reduce((sum, entry) => sum + entry.totalValue, 0);
+  const assignedFuelTotalValue = assignedFuelEntries.reduce((sum, entry) => sum + (entry.totalValue || entry.liters * entry.pricePerLiter), 0);
   const assignedFuelPrice = assignedFuelLiters > 0 ? assignedFuelTotalValue / assignedFuelLiters : 0;
+  const fuelReference = assignedFuelEntries[0];
   const calculatedFuelValue = tripFuelValue(trip, fuelEntries);
   const result = freight - totalCosts - calculatedFuelValue;
   const margin = freight > 0 ? result / freight * 100 : 0;
@@ -1047,7 +1059,7 @@ function TripReport({ trip, rates, costs, fuelEntries, onClose }: {
 
       <section className="report-section"><div className="report-section-title"><span>04</span><div><small>COMBUSTIBLE</small><h2>Consumo y costo del viaje</h2></div><strong>Promedio del viaje: {averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></div>
         <div className="report-table-wrap"><table><thead><tr><th>Chapa</th><th>Combustible consumido</th><th>Carga asignada</th><th>Precio por litro</th><th>Promedio</th><th>Valor calculado</th></tr></thead><tbody>
-          <tr><td><strong>{trip.vehicle}</strong></td><td><strong>{actualConsumedLiters > 0 ? `${number.format(Number(actualConsumedLiters.toFixed(2)))} L` : "Sin consumo validado"}</strong></td><td><strong>{assignedFuelLiters > 0 ? `${number.format(Number(assignedFuelLiters.toFixed(2)))} L` : "Sin carga vinculada"}</strong><small>{assignedFuelEntries.length ? `${assignedFuelEntries.length} carga(s) vinculada(s)` : "Asigne una carga a este viaje"}</small></td><td><strong>{assignedFuelPrice > 0 ? money.format(assignedFuelPrice) : "Sin precio asignado"}</strong><small>{assignedFuelEntries.length > 1 ? "Promedio ponderado por litros" : "Precio de la carga vinculada"}</small></td><td><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></td><td><strong>{calculatedFuelValue > 0 ? money.format(calculatedFuelValue) : "Pendiente"}</strong><small>{actualConsumedLiters > 0 && assignedFuelPrice > 0 ? `${number.format(Number(actualConsumedLiters.toFixed(2)))} L × ${money.format(assignedFuelPrice)}` : "Faltan consumo validado o carga vinculada"}</small></td></tr>
+          <tr><td><strong>{trip.vehicle}</strong></td><td><strong>{actualConsumedLiters > 0 ? `${number.format(Number(actualConsumedLiters.toFixed(2)))} L` : "Sin consumo validado"}</strong></td><td><strong>{assignedFuelLiters > 0 ? `${number.format(Number(assignedFuelLiters.toFixed(2)))} L` : "Sin carga disponible"}</strong><small>{fuelSelection.source === "linked" ? `${assignedFuelEntries.length} carga(s) vinculada(s)` : fuelSelection.source === "latest" && fuelReference ? `Última carga de la chapa · ${formatDate(fuelReference.date)}` : "Registre una carga para esta chapa"}</small></td><td><strong>{assignedFuelPrice > 0 ? money.format(assignedFuelPrice) : "Sin precio disponible"}</strong><small>{fuelSelection.source === "linked" ? (assignedFuelEntries.length > 1 ? "Promedio ponderado por litros" : "Precio de la carga vinculada") : fuelSelection.source === "latest" ? "Precio de la última carga anterior" : "Sin referencia de precio"}</small></td><td><strong>{averageFuelConsumption ? `${averageFuelConsumption.toFixed(2)} km/L` : "Sin consumo validado"}</strong></td><td><strong>{calculatedFuelValue > 0 ? money.format(calculatedFuelValue) : "Pendiente"}</strong><small>{actualConsumedLiters > 0 && assignedFuelPrice > 0 ? `${number.format(Number(actualConsumedLiters.toFixed(2)))} L × ${money.format(assignedFuelPrice)}` : "Faltan consumo validado o carga disponible"}</small></td></tr>
         </tbody></table></div>
       </section>
 
