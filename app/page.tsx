@@ -95,6 +95,16 @@ const tripConsumedFuel = (trip: Trip, entries: FuelEntry[]) => {
   return Math.max(0, trip.fuelInitialLevel + refueled - trip.fuelFinalLevel);
 };
 
+const tripFuelValue = (trip: Trip, entries: FuelEntry[], cycleValue = 0) => {
+  const consumedLiters = tripConsumedFuel(trip, entries);
+  const assignedEntries = entries.filter((entry) => entry.tripId === trip.id);
+  const assignedLiters = assignedEntries.reduce((sum, entry) => sum + entry.liters, 0);
+  const assignedTotal = assignedEntries.reduce((sum, entry) => sum + entry.totalValue, 0);
+  const assignedPrice = assignedLiters > 0 ? assignedTotal / assignedLiters : 0;
+  const assignedValue = consumedLiters > 0 && assignedPrice > 0 ? Math.round(consumedLiters * assignedPrice) : 0;
+  return assignedValue > 0 ? assignedValue : cycleValue;
+};
+
 const calculationMethodFor = (vehicle?: Vehicle): FuelCalculationMethod => vehicle?.fuelCalculationMethod ?? (vehicle?.odometerStatus === "Averiado" ? "GPS / balance del tanque" : "Hodómetro / tanque lleno");
 
 function calculateFuelCycles(entries: FuelEntry[], trips: Trip[], vehicles: Vehicle[]) {
@@ -406,7 +416,7 @@ export default function Home() {
   const tripCostsTotal = useMemo(() => filteredCosts.reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0), [filteredCosts]);
   const fleetCostsTotal = useMemo(() => filteredMaintenance.reduce((sum, item) => sum + item.value, 0), [filteredMaintenance]);
   const costs = tripCostsTotal + fleetCostsTotal;
-  const fuelCost = useMemo(() => filteredTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0), [filteredTrips, fuelCycles]);
+  const fuelCost = useMemo(() => filteredTrips.reduce((sum, trip) => sum + tripFuelValue(trip, fuelEntries, fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0), [filteredTrips, fuelEntries, fuelCycles]);
   const result = revenue - costs - fuelCost;
   const financialCostBreakdown = useMemo(() => {
     const valueFor = (type: CostType) => filteredCosts.filter((cost) => cost.type === type).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
@@ -453,12 +463,12 @@ export default function Home() {
       const fletes = bucketTrips.reduce((sum, trip) => sum + freightValue(trip, freightRates), 0);
       const directCosts = filteredCosts.filter((cost) => matches(cost.date)).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
       const fleetCosts = filteredMaintenance.filter((item) => matches(item.date)).reduce((sum, item) => sum + item.value, 0);
-      const fuel = bucketTrips.reduce((sum, trip) => sum + (fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0);
+      const fuel = bucketTrips.reduce((sum, trip) => sum + tripFuelValue(trip, fuelEntries, fuelCycles.allocationByTrip.get(trip.id) ?? 0), 0);
       const totalCosts = directCosts + fleetCosts + fuel;
       const label = new Intl.DateTimeFormat("es-PY", { month: "short", year: "2-digit" }).format(new Date(`${key}-01T12:00:00`)).replace(".", "");
       return { key, label, fletes, costs: totalCosts, result: fletes - totalCosts };
     });
-  }, [filteredTrips, filteredCosts, filteredFuel, filteredMaintenance, freightRates, fuelCycles, filters.dateFrom, filters.dateTo]);
+  }, [filteredTrips, filteredCosts, filteredFuel, filteredMaintenance, freightRates, fuelEntries, fuelCycles, filters.dateFrom, filters.dateTo]);
   const deliveredOrdersSeries = useMemo(() => financialSeries.map(({ key, label }) => ({
     key,
     label,
@@ -701,7 +711,7 @@ export default function Home() {
   const sectionTitle = navItems.find(([key]) => key === active)?.[1] || "Resumen general";
   const modalFreight = editingTrip ? freightValue(editingTrip, freightRates) : 0;
   const modalCosts = editingTrip ? tripCosts.filter((cost) => cost.tripId === editingTrip.id).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0) : 0;
-  const modalFuel = editingTrip ? fuelCycles.allocationByTrip.get(editingTrip.id) ?? 0 : 0;
+  const modalFuel = editingTrip ? tripFuelValue(editingTrip, fuelEntries, fuelCycles.allocationByTrip.get(editingTrip.id) ?? 0) : 0;
   const selectedVehicleProfile = vehicles.find((vehicle) => vehicle.plate === vehicleDraft);
   const selectedOdometerBroken = selectedVehicleProfile?.odometerStatus === "Averiado";
   const selectedFuelCalculationMethod = calculationMethodFor(selectedVehicleProfile);
@@ -1003,7 +1013,7 @@ function TripReport({ trip, rates, costs, fuelEntries, onClose }: {
   const assignedFuelLiters = assignedFuelEntries.reduce((sum, entry) => sum + entry.liters, 0);
   const assignedFuelTotalValue = assignedFuelEntries.reduce((sum, entry) => sum + entry.totalValue, 0);
   const assignedFuelPrice = assignedFuelLiters > 0 ? assignedFuelTotalValue / assignedFuelLiters : 0;
-  const calculatedFuelValue = actualConsumedLiters > 0 && assignedFuelPrice > 0 ? Math.round(actualConsumedLiters * assignedFuelPrice) : 0;
+  const calculatedFuelValue = tripFuelValue(trip, fuelEntries);
   const result = freight - totalCosts - calculatedFuelValue;
   const margin = freight > 0 ? result / freight * 100 : 0;
   const averageFuelConsumption = actualConsumedLiters > 0 ? km / actualConsumedLiters : 0;
@@ -1628,7 +1638,7 @@ function ResultsModule({ trips, vehicleFilter, rates, costs, fuelByTrip, fuelCyc
     const allocationShare = freightTypeFilter && fullFreight > 0 ? freight / fullFreight : 1;
     const fullCosts = costs.filter((cost) => cost.tripId === trip.id).reduce((sum, cost) => sum + cost.quantity * cost.unitValue, 0);
     const tripCostsTotal = Math.round(fullCosts * allocationShare);
-    const fuel = Math.round((fuelByTrip.get(trip.id) ?? 0) * allocationShare);
+    const fuel = Math.round(tripFuelValue(trip, fuelEntries, fuelByTrip.get(trip.id) ?? 0) * allocationShare);
     const profit = freight - tripCostsTotal - fuel;
     const fullKm = tripDistance(trip);
     const km = fullKm * allocationShare;
