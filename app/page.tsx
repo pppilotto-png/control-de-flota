@@ -479,13 +479,27 @@ export default function Home() {
       return { key, label, fletes, costs: totalCosts, result: fletes - totalCosts };
     });
   }, [filteredTrips, filteredCosts, filteredFuel, filteredMaintenance, freightRates, fuelEntries, fuelCycles, filters.dateFrom, filters.dateTo]);
-  const deliveredOrdersSeries = useMemo(() => financialSeries.map(({ key, label }) => ({
-    key,
-    label,
-    total: filteredTrips
-      .filter((trip) => trip.status === "Finalizado" && monthKeyFromDate(trip.endDate) === key)
-      .reduce((sum, trip) => sum + trip.orders.length, 0),
-  })), [financialSeries, filteredTrips]);
+  const deliveredOrdersSeries = useMemo(() => {
+    const completedDates = filteredTrips
+      .filter((trip) => trip.status === "Finalizado" && trip.endDate)
+      .map((trip) => trip.endDate!)
+      .sort();
+    const referenceDate = filters.dateTo || completedDates.at(-1) || new Date().toISOString().slice(0, 10);
+    const year = referenceDate.slice(0, 4);
+    return Array.from({ length: 12 }, (_, month) => {
+      const key = `${year}-${String(month + 1).padStart(2, "0")}`;
+      const label = new Intl.DateTimeFormat("es-PY", { month: "short", year: "2-digit" })
+        .format(new Date(`${key}-01T12:00:00`))
+        .replace(".", "");
+      return {
+        key,
+        label,
+        total: filteredTrips
+          .filter((trip) => trip.status === "Finalizado" && monthKeyFromDate(trip.endDate) === key)
+          .reduce((sum, trip) => sum + trip.orders.length, 0),
+      };
+    });
+  }, [filteredTrips, filters.dateTo]);
   const deliveredOrdersMax = Math.max(1, ...deliveredOrdersSeries.map((item) => item.total));
   const deliveredOrdersTotal = deliveredOrdersSeries.reduce((sum, item) => sum + item.total, 0);
   const isReadOnly = session.role === "Consulta";
