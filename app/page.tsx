@@ -812,7 +812,7 @@ export default function Home() {
         <FinancialSankey revenue={revenue} result={result} items={financialCostBreakdown}/>
         <section className="delivered-orders-card" aria-label="Pedidos entregados por mes">
           <div className="delivered-orders-heading"><div><p className="eyebrow">Operación concluida</p><h2>Pedidos entregados por mes</h2><small>Pedidos de viajes finalizados, agrupados por la fecha final del viaje</small></div><div><strong>{number.format(deliveredOrdersTotal)}</strong><span>Total del periodo</span></div></div>
-          <div className="delivered-orders-scroll"><div className="delivered-orders-chart" style={deliveredOrdersSeries.length > 8 ? { minWidth: `${deliveredOrdersSeries.length * 88}px` } : undefined}>
+          <div className="delivered-orders-scroll"><div className="delivered-orders-chart" style={deliveredOrdersSeries.length > 8 ? { minWidth: `${deliveredOrdersSeries.length * 80}px` } : undefined}>
             {deliveredOrdersSeries.map((item) => <div className="delivered-orders-column" key={item.key}><strong>{number.format(item.total)}</strong><div className="delivered-orders-track"><span style={{ height: `${item.total ? Math.max(8, item.total / deliveredOrdersMax * 100) : 0}%` }} title={`${item.label}: ${number.format(item.total)} pedidos entregados`}/></div><small>{item.label}</small></div>)}
           </div></div>
         </section>
